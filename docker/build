@@ -1,0 +1,7 @@
+#!/bin/bash
+#This builds the docker image and tags it to your local docker repo as "rustpi" for use in the deploy script
+set -o errexit
+set -o nounset
+set -o pipefail
+set -o xtrace
+docker build . -t rustpi
