@@ -23,8 +23,12 @@ COPY ./configure.sh /root/configure.sh
 RUN chmod +x /root/configure.sh
 RUN /root/configure.sh
 
+# cache the crates that are in use
+COPY ./Cargo.toml /root/workspace/Cargo.toml
+COPY ./Cargo.lock /root/workspace/Cargo.lock
 WORKDIR /root/workspace
 ENV USER root
 ENV PATH $PATH:/root/.cargo/bin
+RUN cargo update
 
 CMD cargo build --release --target=armv7-unknown-linux-gnueabihf

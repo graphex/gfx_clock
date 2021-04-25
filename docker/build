@@ -4,4 +4,8 @@ set -o errexit
 set -o nounset
 set -o pipefail
 set -o xtrace
+cd "$(dirname "$0")"
+cp ../Cargo.lock ./Cargo.lock
+cp ../Cargo.toml ./Cargo.toml
 docker build . -t rustpi
+rm ./Cargo.lock ./Cargo.toml

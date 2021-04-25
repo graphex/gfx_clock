@@ -6,9 +6,14 @@ if [ ! -z "$(uname -a | grep -o Darwin)" ]; then
     exit 1
 fi
 
-mkdir -p /root/workspace
+mkdir -p /root/workspace/src
 mkdir -p /root/.cargo
 cat >>/root/.cargo/config <<EOF
 [target.armv7-unknown-linux-gnueabihf]
 linker = "arm-linux-gnueabihf-gcc"
+EOF
+cat >>/root/workspace/src/main.rs <<EOF
+fn main() {
+    println!("Hello, world!");
+}
 EOF
