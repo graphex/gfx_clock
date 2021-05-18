@@ -16,6 +16,7 @@ use self::typenum::NonZero;
 use std::ops::{Add, Sub, Div};
 use std::iter::FromIterator;
 use std::borrow::BorrowMut;
+use chrono::prelude::*;
 
 //The latch enable pin GPIO number. Should be low during writes.
 const LE_PIN: u8 = 22;
@@ -33,18 +34,18 @@ pub enum DisplayElement {
 }
 
 pub struct DisplayMessage {
-    pub t0:NumericTube,
-    pub t1:NumericTube,
-    pub s0:Separator,
-    pub t2:NumericTube,
-    pub t3:NumericTube,
-    pub s1:Separator,
-    pub t4:NumericTube,
-    pub t5:NumericTube,
-    pub s2:Separator,
-    pub t6:NumericTube,
-    pub t7:NumericTube,
-    pub t8:IN19ATube,
+    pub t0: NumericTube,
+    pub t1: NumericTube,
+    pub s0: Separator,
+    pub t2: NumericTube,
+    pub t3: NumericTube,
+    pub s1: Separator,
+    pub t4: NumericTube,
+    pub t5: NumericTube,
+    pub s2: Separator,
+    pub t6: NumericTube,
+    pub t7: NumericTube,
+    pub t8: IN19ATube,
 }
 
 impl DisplayMessage {
@@ -78,6 +79,30 @@ impl DisplayMessage {
             self.t1.get_bits().iter(),
             self.t0.get_bits().iter(),
         ].into_iter().flatten().collect()
+    }
+    pub fn for_now() -> DisplayMessage {
+        let local: DateTime<Local> = Local::now();
+        DisplayMessage::from_string(local.format("%T%.3f").to_string())
+        // DisplayMessage::from_string(("22:33:44.55").to_string())
+    }
+    // HH:MM:SS.cc
+    pub fn from_string(time_string: String) -> DisplayMessage {
+        // println!("Showing time: {}", time_string);
+        let cs:Vec<char> = time_string.chars().collect::<Vec<_>>();
+        DisplayMessage {
+            t0: NumericTube::from_char(cs[0]),
+            t1: NumericTube::from_char(cs[1]),
+            s0: Separator::new(SeparatorBitsIndex::BOTH),
+            t2: NumericTube::from_char(cs[3]),
+            t3: NumericTube::from_char(cs[4]),
+            s1: Separator::new(SeparatorBitsIndex::BOTH),
+            t4: NumericTube::from_char(cs[6]),
+            t5: NumericTube::from_char(cs[7]),
+            s2: Separator::new(SeparatorBitsIndex::BOTH),
+            t6: NumericTube::from_char(cs[9]),
+            t7: NumericTube::from_char(cs[10]),
+            t8: IN19ATube::new(IN19ABitsIndex::CELSIUS),
+        }
     }
 }
 
@@ -117,7 +142,7 @@ impl ClockDisplay {
             thread::sleep(Duration::from_millis(50));
         }
     }
-    pub fn show(&mut self, dm:DisplayMessage) {
+    pub fn show(&mut self, dm: DisplayMessage) {
         self.raw_message = dm.to_raw();
         self.write_frame();
     }
@@ -139,9 +164,6 @@ impl ClockDisplay {
 //     clock_display: None,
 // };
 
-
-
-
 pub trait Tube {
     fn get_bits(&self) -> BitVec<u8>;
 }
@@ -158,7 +180,7 @@ impl Tube for NumericTube {
 
 impl NumericTube {
     pub fn new(bit_index: NumericBitsIndex) -> NumericTube {
-        let mut tube:NumericTube = NumericTube {
+        let mut tube: NumericTube = NumericTube {
             bits: BitArray::<u8, U10>::from_elem(false)
         };
         tube.set_cathode(bit_index);
@@ -166,10 +188,30 @@ impl NumericTube {
     }
     pub fn set_cathode(&mut self, bit_index: NumericBitsIndex) {
         self.bits.clear();
-        match bit_index{
+        match bit_index {
             NumericBitsIndex::BLANK => (),
             _ => self.bits.set(bit_index as usize, true),
         }
+    }
+    pub fn from_char(c: char) -> NumericTube {
+        let mut tube: NumericTube = NumericTube {
+            bits: BitArray::<u8, U10>::from_elem(false)
+        };
+        let bit_index = match c {
+            '0' => NumericBitsIndex::_0,
+            '1' => NumericBitsIndex::_1,
+            '2' => NumericBitsIndex::_2,
+            '3' => NumericBitsIndex::_3,
+            '4' => NumericBitsIndex::_4,
+            '5' => NumericBitsIndex::_5,
+            '6' => NumericBitsIndex::_6,
+            '7' => NumericBitsIndex::_7,
+            '8' => NumericBitsIndex::_8,
+            '9' => NumericBitsIndex::_9,
+            _ => NumericBitsIndex::BLANK,
+        };
+        tube.set_cathode(bit_index);
+        tube
     }
 }
 
@@ -199,7 +241,7 @@ impl Tube for IN19ATube {
 
 impl IN19ATube {
     pub fn new(bit_index: IN19ABitsIndex) -> IN19ATube {
-        let mut tube:IN19ATube = IN19ATube {
+        let mut tube: IN19ATube = IN19ATube {
             bits: BitArray::<u8, U10>::from_elem(false)
         };
         tube.set_cathode(bit_index);
@@ -208,7 +250,7 @@ impl IN19ATube {
 
     fn set_cathode(&mut self, bit_index: IN19ABitsIndex) {
         self.bits.clear();
-        match bit_index{
+        match bit_index {
             IN19ABitsIndex::BLANK => (),
             _ => self.bits.set(bit_index as usize, true),
         }
@@ -240,7 +282,7 @@ impl Tube for Separator {
 
 impl Separator {
     pub fn new(bit_index: SeparatorBitsIndex) -> Separator {
-        let mut tube:Separator = Separator {
+        let mut tube: Separator = Separator {
             bits: BitArray::<u8, U2>::from_elem(false)
         };
         tube.set_indicators(bit_index);
@@ -249,10 +291,17 @@ impl Separator {
 
     fn set_indicators(&mut self, bit_index: SeparatorBitsIndex) {
         self.bits.clear();
-        match bit_index{
+        match bit_index {
             SeparatorBitsIndex::BLANK => (),
             SeparatorBitsIndex::BOTH => self.bits.negate(),
             _ => self.bits.set(bit_index as usize, true),
+        }
+    }
+    fn from_hundos_string(hundos: String) -> Separator {
+        let cs = hundos.parse::<u16>();
+        match cs {
+            Ok(secs) if secs < 50 => Separator::new(SeparatorBitsIndex::BOTH),
+            _ => Separator::new(SeparatorBitsIndex::BLANK),
         }
     }
 }
