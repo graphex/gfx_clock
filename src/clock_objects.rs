@@ -4,22 +4,29 @@ use std::thread;
 use std::time::Duration;
 
 extern crate typenum;
+extern crate easer;
 
 use bit_array::{BitArray, BitsIn};
 use bit_vec::BitVec;
 use typenum::{Unsigned, U96, U10, U2};
 use rppal::spi::{Bus, Mode, Segment, SlaveSelect, Spi};
-use rppal::gpio::{Gpio, OutputPin};
+use rppal::gpio::{Gpio, OutputPin, Level};
 use rppal::system::DeviceInfo;
 use std::mem::replace;
-use self::typenum::NonZero;
+use self::typenum::{NonZero, Bit};
 use std::ops::{Add, Sub, Div};
 use std::iter::FromIterator;
 use std::borrow::BorrowMut;
 use chrono::prelude::*;
+use easer::functions::*;
+use rand::Rng;
 
 //The latch enable pin GPIO number. Should be low during writes.
 const LE_PIN: u8 = 22;
+//RGB Pins
+const R_PIN: u8 = 20;
+const G_PIN: u8 = 16;
+const B_PIN: u8 = 21;
 
 //TODO: use as generic type parameter for DisplayMessages and ClockDisplay
 pub enum ClockType {
@@ -82,8 +89,26 @@ impl DisplayMessage {
     }
     pub fn for_now() -> DisplayMessage {
         let local: DateTime<Local> = Local::now();
-        DisplayMessage::from_string(local.format("%T%.3f").to_string())
+        let mut msgString = local.format("%T%.3f").to_string();
+        if !DisplayMessage::rnd_pfm(local.timestamp_subsec_micros()) {
+            msgString = msgString.replace(":", " ");
+            msgString = msgString.replace(".", " ");
+        }
+        DisplayMessage::from_string(msgString)
         // DisplayMessage::from_string(("22:33:44.55").to_string())
+    }
+    //super mega unoptimised pulse frequency modulation
+    pub fn rnd_pfm(micros:u32) -> bool {
+        let mut rng = rand::thread_rng();
+        let p:f32;
+        if micros < 750_000 {
+            p = Bounce::ease_in(micros as f32, 255f32, -255f32, 750_000f32);
+        } else {
+            return false;
+        }
+        let r = rng.gen_range(0..255) < p as isize;
+        // println!("{},{},{}", micros, p, r);
+        r
     }
     // HH:MM:SS.cc
     pub fn from_string(time_string: String) -> DisplayMessage {
@@ -92,13 +117,13 @@ impl DisplayMessage {
         DisplayMessage {
             t0: NumericTube::from_char(cs[0]),
             t1: NumericTube::from_char(cs[1]),
-            s0: Separator::new(SeparatorBitsIndex::BOTH),
+            s0: Separator::from_char(cs[2]),
             t2: NumericTube::from_char(cs[3]),
             t3: NumericTube::from_char(cs[4]),
-            s1: Separator::new(SeparatorBitsIndex::BOTH),
+            s1: Separator::from_char(cs[5]),
             t4: NumericTube::from_char(cs[6]),
             t5: NumericTube::from_char(cs[7]),
-            s2: Separator::new(SeparatorBitsIndex::BOTH),
+            s2: Separator::from_char(cs[8]),
             t6: NumericTube::from_char(cs[9]),
             t7: NumericTube::from_char(cs[10]),
             t8: IN19ATube::new(IN19ABitsIndex::CELSIUS),
@@ -111,6 +136,9 @@ pub struct ClockDisplay {
     raw_message: BitArray::<u8, U96>,
     le_pin: OutputPin,
     spi: Spi,
+    r_pin: OutputPin,
+    g_pin: OutputPin,
+    b_pin: OutputPin,
 }
 
 impl ClockDisplay {
@@ -119,9 +147,13 @@ impl ClockDisplay {
         let mut cd = ClockDisplay {
             le_pin: Gpio::new()?.get(LE_PIN)?.into_output(),
             raw_message: BitArray::<u8, U96>::from_elem(false),
-            spi: Spi::new(Bus::Spi0, SlaveSelect::Ss0, 2_000_000, Mode::Mode2)?,
+            spi: Spi::new(Bus::Spi0, SlaveSelect::Ss0, 8_000_000, Mode::Mode2)?,
+            r_pin: Gpio::new()?.get(R_PIN)?.into_output(),
+            g_pin: Gpio::new()?.get(G_PIN)?.into_output(),
+            b_pin: Gpio::new()?.get(B_PIN)?.into_output(),
         };
         cd.le_pin.set_high();
+
         Ok(cd)
     }
     fn write_frame(&mut self) {
@@ -130,6 +162,7 @@ impl ClockDisplay {
         } else {
             self.le_pin.set_low();
             self.spi.write(&*self.raw_message.to_bytes());
+            // thread::sleep(Duration::from_millis(5));
             self.le_pin.set_high();
         }
     }
@@ -289,6 +322,21 @@ impl Separator {
         tube
     }
 
+    pub fn from_char(c: char) -> Separator {
+        let mut tube: Separator = Separator {
+            bits: BitArray::<u8, U2>::from_elem(false)
+        };
+        let bit_index = match c {
+            ' ' => SeparatorBitsIndex::BLANK,
+            ':' => SeparatorBitsIndex::BOTH,
+            '.' => SeparatorBitsIndex::BOTTOM,
+            '\'' => SeparatorBitsIndex::TOP,
+            _ => SeparatorBitsIndex::BLANK,
+        };
+        tube.set_indicators(bit_index);
+        tube
+    }
+
     fn set_indicators(&mut self, bit_index: SeparatorBitsIndex) {
         self.bits.clear();
         match bit_index {
@@ -297,6 +345,7 @@ impl Separator {
             _ => self.bits.set(bit_index as usize, true),
         }
     }
+    //nobody uses centiseconds and hundredths of a second is such a mouthful...
     fn from_hundos_string(hundos: String) -> Separator {
         let cs = hundos.parse::<u16>();
         match cs {
