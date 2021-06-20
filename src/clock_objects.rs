@@ -1,25 +1,20 @@
-use std::error::Error;
+extern crate easer;
+extern crate typenum;
 
+use std::iter::FromIterator;
 use std::thread;
 use std::time::Duration;
 
-extern crate typenum;
-extern crate easer;
-
-use bit_array::{BitArray, BitsIn};
+use bit_array::BitArray;
 use bit_vec::BitVec;
-use typenum::{Unsigned, U96, U10, U2};
-use rppal::spi::{Bus, Mode, Segment, SlaveSelect, Spi};
-use rppal::gpio::{Gpio, OutputPin, Level};
-use rppal::system::DeviceInfo;
-use std::mem::replace;
-use self::typenum::{NonZero, Bit};
-use std::ops::{Add, Sub, Div};
-use std::iter::FromIterator;
-use std::borrow::BorrowMut;
 use chrono::prelude::*;
 use easer::functions::*;
 use rand::Rng;
+use rppal::gpio::{Gpio, OutputPin};
+use rppal::spi::{Bus, Mode, SlaveSelect, Spi};
+use rppal::system::DeviceInfo;
+use typenum::{U10, U2, U96};
+use std::error::Error;
 
 //The latch enable pin GPIO number. Should be low during writes.
 const LE_PIN: u8 = 22;
@@ -29,11 +24,13 @@ const G_PIN: u8 = 16;
 const B_PIN: u8 = 21;
 
 //TODO: use as generic type parameter for DisplayMessages and ClockDisplay
+#[allow(dead_code)]
 pub enum ClockType {
     _9Tubes,
     _6Tubes,
 }
 
+#[allow(dead_code)]
 pub enum DisplayElement {
     NumericTube(NumericTube),
     Separator(Separator),
@@ -89,12 +86,12 @@ impl DisplayMessage {
     }
     pub fn for_now() -> DisplayMessage {
         let local: DateTime<Local> = Local::now();
-        let mut msgString = local.format("%T%.3f").to_string();
+        let mut msg_string = local.format("%T%.3f").to_string();
         if !DisplayMessage::rnd_pfm(local.timestamp_subsec_micros()) {
-            msgString = msgString.replace(":", " ");
-            msgString = msgString.replace(".", " ");
+            msg_string = msg_string.replace(":", " ");
+            msg_string = msg_string.replace(".", " ");
         }
-        DisplayMessage::from_string(msgString)
+        DisplayMessage::from_string(msg_string)
         // DisplayMessage::from_string(("22:33:44.55").to_string())
     }
     //super mega unoptimised pulse frequency modulation
@@ -107,7 +104,6 @@ impl DisplayMessage {
             return false;
         }
         let r = rng.gen_range(0..255) < p as isize;
-        // println!("{},{},{}", micros, p, r);
         r
     }
     // HH:MM:SS.cc
@@ -126,7 +122,7 @@ impl DisplayMessage {
             s2: Separator::from_char(cs[8]),
             t6: NumericTube::from_char(cs[9]),
             t7: NumericTube::from_char(cs[10]),
-            t8: IN19ATube::new(IN19ABitsIndex::CELSIUS),
+            t8: IN19ATube::new(IN19ABitsIndex::Celsius),
         }
     }
 }
@@ -141,6 +137,7 @@ pub struct ClockDisplay {
     b_pin: OutputPin,
 }
 
+#[allow(dead_code)]
 impl ClockDisplay {
     pub fn new() -> Result<ClockDisplay, Box<dyn Error>> {
         println!("Running clock on a {}.", DeviceInfo::new()?.model());
@@ -156,28 +153,30 @@ impl ClockDisplay {
 
         Ok(cd)
     }
-    fn write_frame(&mut self) {
+    fn write_frame(&mut self) -> Result<(), Box<dyn Error>> {
         if self.le_pin.is_set_low() {
             println!("Latch already set low by another process, aborting write!")
         } else {
             self.le_pin.set_low();
-            self.spi.write(&*self.raw_message.to_bytes());
-            // thread::sleep(Duration::from_millis(5));
+            self.spi.write(&*self.raw_message.to_bytes())?;
             self.le_pin.set_high();
         }
+        Ok(())
     }
-    pub fn sweep(&mut self) {
+    pub fn sweep(&mut self) -> Result<(), Box<dyn Error>> {
         for i in 0..96 {
             self.raw_message.clear();
             self.raw_message.set(i, true);
             println!("i: {}, raw:{:?}", i, self.raw_message);
-            self.write_frame();
+            self.write_frame()?;
             thread::sleep(Duration::from_millis(50));
         }
+        Ok(())
     }
-    pub fn show(&mut self, dm: DisplayMessage) {
+    pub fn show(&mut self, dm: DisplayMessage) -> Result<(), Box<dyn Error>> {
         self.raw_message = dm.to_raw();
-        self.write_frame();
+        self.write_frame()?;
+        Ok(())
     }
 }
 
@@ -211,6 +210,7 @@ impl Tube for NumericTube {
     }
 }
 
+#[allow(dead_code)]
 impl NumericTube {
     pub fn new(bit_index: NumericBitsIndex) -> NumericTube {
         let mut tube: NumericTube = NumericTube {
@@ -284,23 +284,24 @@ impl IN19ATube {
     fn set_cathode(&mut self, bit_index: IN19ABitsIndex) {
         self.bits.clear();
         match bit_index {
-            IN19ABitsIndex::BLANK => (),
+            IN19ABitsIndex::Blank => (),
             _ => self.bits.set(bit_index as usize, true),
         }
     }
 }
 
+#[allow(dead_code)]
 pub enum IN19ABitsIndex {
     //_ _ ℃ μ η κ ₘ Ρ Μ % (IN-19A)
-    CELSIUS = 2,
-    MICRO = 3,
-    NANO = 4,
-    KELVIN = 5,
-    M_SMALL = 6,
+    Celsius = 2,
+    Micro = 3,
+    Nano = 4,
+    Kelvin = 5,
+    MSmall = 6,
     P = 7,
     M = 8,
-    PERCENT = 9,
-    BLANK = 10,
+    Percent = 9,
+    Blank = 10,
 }
 
 pub struct Separator {
@@ -313,6 +314,7 @@ impl Tube for Separator {
     }
 }
 
+#[allow(dead_code)]
 impl Separator {
     pub fn new(bit_index: SeparatorBitsIndex) -> Separator {
         let mut tube: Separator = Separator {
