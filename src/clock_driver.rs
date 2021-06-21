@@ -37,7 +37,7 @@ impl ClockDisplay {
 
         Ok(cd)
     }
-    fn write_frame(&mut self, off_linger:Duration, on_linger:Duration) -> Result<(), Box<dyn Error>> {
+    fn write_frame(&mut self, off_linger: Duration, on_linger: Duration) -> Result<(), Box<dyn Error>> {
         if self.le_pin.is_set_low() {
             println!("Latch already set low by another process, aborting write!")
         } else {
@@ -63,7 +63,7 @@ impl ClockDisplay {
         self.write_frame(dm.off_linger, dm.on_linger)
     }
 
-    pub fn show_next_frame(&mut self, frame_interval_us:u64) -> Result<(), Box<dyn Error>> {
+    pub fn show_next_frame(&mut self, frame_interval_us: u64) -> Result<(), Box<dyn Error>> {
         let local: DateTime<Local> = Local::now();
         let mut msg_string = DisplayMessageStringUtils::for_local(local);
         if !self.time_separators_animation(local.timestamp_subsec_micros()) {
@@ -84,13 +84,17 @@ impl ClockDisplay {
             false
         }
     }
-    fn pwm_seconds_animation(&self, micros: u32, frame_interval_us:u64) -> (Duration, Duration) {
+    fn pwm_seconds_animation(&self, micros: u32, frame_interval_us: u64) -> (Duration, Duration) {
         if micros < 750_000 {
             let p: f32;
             p = Sine::ease_in(micros as f32, 1f32, -1f32, 750_000f32);
-            (Duration::from_micros(((1f32-p) * frame_interval_us as f32) as u64), Duration::from_micros((p * frame_interval_us as f32) as u64))
+            (Duration::from_micros(((1f32 - p) * frame_interval_us as f32) as u64), Duration::from_micros((p * frame_interval_us as f32) as u64))
+        } else if micros < 900_000 {
+            (Duration::from_micros(frame_interval_us), Duration::from_micros(0))
         } else {
-            (Duration::from_micros(0), Duration::from_micros(frame_interval_us))
+            let p: f32;
+            p = Quint::ease_in((micros-900_000u32) as f32, 0f32, 1f32, 100_000f32);
+            (Duration::from_micros(((1f32 - p) * frame_interval_us as f32) as u64), Duration::from_micros((p * frame_interval_us as f32) as u64))
         }
     }
 }
