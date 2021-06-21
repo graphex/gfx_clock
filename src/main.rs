@@ -1,10 +1,9 @@
-use crate::clock_objects::*;
+use crate::clock_driver::*;
 
 mod clock_objects;
+mod clock_driver;
 
 use tokio::runtime::{Builder};
-use std::time::Duration;
-use std::thread;
 use std::error::Error;
 
 const FPS_HZ: f32 = 5000f32; //Approximate Max is 5kHz
@@ -42,21 +41,21 @@ async fn wait_for_signal() {
 /// This has to be a pretty hot loop, looking for 200μs or higher precision for 5kHz
 /// and async isn't cutting it, with around 1ms being the min delay
 fn timeloop(mut clock: ClockDisplay) {
-    let mut on_interval = (1f32 / FPS_HZ * 1000f32 * 1000f32) as u64;
-    if on_interval > 100 {
-        on_interval = on_interval - 100;
+    let mut frame_interval_us = (1f32 / FPS_HZ * 1000f32 * 1000f32) as u64;
+    if frame_interval_us > 100 {
+        frame_interval_us = frame_interval_us - 100;
     }
-    println!("Clock Interval {:?}us", on_interval);
+    println!("Clock Interval {:?}us", frame_interval_us);
     // let mut frame_interval = tokio::time::interval(Duration::from_micros(interval_micros));
     loop {
-        clock.show(DisplayMessage::for_now()).expect("Clock Display Failed");
+        clock.show_next_frame(frame_interval_us).expect("Clock Display Failed");
 
         //ends up being about interval_micros + 100μs
-        thread::sleep(Duration::from_micros(on_interval));
+        //thread::sleep(Duration::from_micros(frame_interval));
 
         //clumps of no delay followed by 1ms pauses
         // frame_interval.tick().await;
-        
+
         //ends up being about 1.2ms
         // time::sleep(Duration::from_micros(interval_micros)).await;
     }

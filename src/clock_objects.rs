@@ -2,26 +2,12 @@ extern crate easer;
 extern crate typenum;
 
 use std::iter::FromIterator;
-use std::thread;
-use std::time::Duration;
 
 use bit_array::BitArray;
 use bit_vec::BitVec;
 use chrono::prelude::*;
-use easer::functions::*;
-use rand::Rng;
-use rppal::gpio::{Gpio, OutputPin};
-use rppal::spi::{Bus, Mode, SlaveSelect, Spi};
-use rppal::system::DeviceInfo;
 use typenum::{U10, U2, U96};
-use std::error::Error;
-
-//The latch enable pin GPIO number. Should be low during writes.
-const LE_PIN: u8 = 22;
-//RGB Pins
-const R_PIN: u8 = 20;
-const G_PIN: u8 = 16;
-const B_PIN: u8 = 21;
+use std::time::Duration;
 
 //TODO: use as generic type parameter for DisplayMessages and ClockDisplay
 #[allow(dead_code)]
@@ -37,6 +23,16 @@ pub enum DisplayElement {
     IN19ATube(IN19ATube),
 }
 
+pub struct DisplayMessageStringUtils {}
+
+impl DisplayMessageStringUtils {
+    pub fn for_local(local: DateTime<Local>) -> String {
+        let mut s = local.format("%T%.3f").to_string();
+        s.push_str(" ");
+        s
+    }
+}
+
 pub struct DisplayMessage {
     pub t0: NumericTube,
     pub t1: NumericTube,
@@ -50,6 +46,8 @@ pub struct DisplayMessage {
     pub t6: NumericTube,
     pub t7: NumericTube,
     pub t8: IN19ATube,
+    pub off_linger: Duration,
+    pub on_linger: Duration,
 }
 
 impl DisplayMessage {
@@ -65,7 +63,7 @@ impl DisplayMessage {
     // 66-75 t2
     // 76-85 t1
     // 86-95 t0
-    fn to_raw(&self) -> BitArray::<u8, U96> {
+    pub(crate) fn to_raw(&self) -> BitArray::<u8, U96> {
         // let mut combined_vec:BitVec<u8> = BitVec::<u8>::new();
         // combined_vec.reserve(96);
         // combined_vec.append(&mut self.s2.get_bits().iter().copied().collect());
@@ -84,32 +82,11 @@ impl DisplayMessage {
             self.t0.get_bits().iter(),
         ].into_iter().flatten().collect()
     }
-    pub fn for_now() -> DisplayMessage {
-        let local: DateTime<Local> = Local::now();
-        let mut msg_string = local.format("%T%.3f").to_string();
-        if !DisplayMessage::rnd_pfm(local.timestamp_subsec_micros()) {
-            msg_string = msg_string.replace(":", " ");
-            msg_string = msg_string.replace(".", " ");
-        }
-        DisplayMessage::from_string(msg_string)
-        // DisplayMessage::from_string(("22:33:44.55").to_string())
-    }
-    //super mega unoptimised pulse frequency modulation
-    pub fn rnd_pfm(micros:u32) -> bool {
-        let mut rng = rand::thread_rng();
-        let p:f32;
-        if micros < 750_000 {
-            p = Bounce::ease_in(micros as f32, 255f32, -255f32, 750_000f32);
-        } else {
-            return false;
-        }
-        let r = rng.gen_range(0..255) < p as isize;
-        r
-    }
-    // HH:MM:SS.cc
-    pub fn from_string(time_string: String) -> DisplayMessage {
+
+    // HH:MM:SS.ccS
+    pub fn from_string(time_string: String, off_linger: Option<Duration>, on_linger: Option<Duration>) -> DisplayMessage {
         // println!("Showing time: {}", time_string);
-        let cs:Vec<char> = time_string.chars().collect::<Vec<_>>();
+        let cs: Vec<char> = time_string.chars().collect::<Vec<_>>();
         DisplayMessage {
             t0: NumericTube::from_char(cs[0]),
             t1: NumericTube::from_char(cs[1]),
@@ -122,79 +99,12 @@ impl DisplayMessage {
             s2: Separator::from_char(cs[8]),
             t6: NumericTube::from_char(cs[9]),
             t7: NumericTube::from_char(cs[10]),
-            t8: IN19ATube::new(IN19ABitsIndex::Celsius),
+            t8: IN19ATube::from_char(cs[11]),
+            off_linger: off_linger.unwrap_or(Duration::from_micros(0)),
+            on_linger: on_linger.unwrap_or(Duration::from_micros(0)),
         }
     }
 }
-
-#[derive(Debug)]
-pub struct ClockDisplay {
-    raw_message: BitArray::<u8, U96>,
-    le_pin: OutputPin,
-    spi: Spi,
-    r_pin: OutputPin,
-    g_pin: OutputPin,
-    b_pin: OutputPin,
-}
-
-#[allow(dead_code)]
-impl ClockDisplay {
-    pub fn new() -> Result<ClockDisplay, Box<dyn Error>> {
-        println!("Running clock on a {}.", DeviceInfo::new()?.model());
-        let mut cd = ClockDisplay {
-            le_pin: Gpio::new()?.get(LE_PIN)?.into_output(),
-            raw_message: BitArray::<u8, U96>::from_elem(false),
-            spi: Spi::new(Bus::Spi0, SlaveSelect::Ss0, 8_000_000, Mode::Mode2)?,
-            r_pin: Gpio::new()?.get(R_PIN)?.into_output(),
-            g_pin: Gpio::new()?.get(G_PIN)?.into_output(),
-            b_pin: Gpio::new()?.get(B_PIN)?.into_output(),
-        };
-        cd.le_pin.set_high();
-
-        Ok(cd)
-    }
-    fn write_frame(&mut self) -> Result<(), Box<dyn Error>> {
-        if self.le_pin.is_set_low() {
-            println!("Latch already set low by another process, aborting write!")
-        } else {
-            self.le_pin.set_low();
-            self.spi.write(&*self.raw_message.to_bytes())?;
-            self.le_pin.set_high();
-        }
-        Ok(())
-    }
-    pub fn sweep(&mut self) -> Result<(), Box<dyn Error>> {
-        for i in 0..96 {
-            self.raw_message.clear();
-            self.raw_message.set(i, true);
-            println!("i: {}, raw:{:?}", i, self.raw_message);
-            self.write_frame()?;
-            thread::sleep(Duration::from_millis(50));
-        }
-        Ok(())
-    }
-    pub fn show(&mut self, dm: DisplayMessage) -> Result<(), Box<dyn Error>> {
-        self.raw_message = dm.to_raw();
-        self.write_frame()?;
-        Ok(())
-    }
-}
-
-//Initial attempt at making ClockDisplay a singleton
-// pub struct Clock {
-//     clock_display: Option<ClockDisplay>,
-// }
-//
-// impl Clock {
-//     pub fn take_clock(&mut self) -> ClockDisplay {
-//         let c = replace(&mut self.clock_display, None);
-//         c.unwrap()
-//     }
-// }
-//
-// pub static mut CLOCK: Clock = Clock {
-//     clock_display: None,
-// };
 
 pub trait Tube {
     fn get_bits(&self) -> BitVec<u8>;
@@ -272,6 +182,7 @@ impl Tube for IN19ATube {
     }
 }
 
+#[allow(dead_code)]
 impl IN19ATube {
     pub fn new(bit_index: IN19ABitsIndex) -> IN19ATube {
         let mut tube: IN19ATube = IN19ATube {
@@ -287,6 +198,33 @@ impl IN19ATube {
             IN19ABitsIndex::Blank => (),
             _ => self.bits.set(bit_index as usize, true),
         }
+    }
+
+    pub fn from_char(c: char) -> IN19ATube {
+        let mut tube: IN19ATube = IN19ATube {
+            bits: BitArray::<u8, U10>::from_elem(false)
+        };
+        let bit_index = match c {
+            '℃' => IN19ABitsIndex::Celsius,
+            'c' => IN19ABitsIndex::Celsius,
+            'C' => IN19ABitsIndex::Celsius,
+            'μ' => IN19ABitsIndex::Micro,
+            'u' => IN19ABitsIndex::Micro,
+            'η' => IN19ABitsIndex::Nano,
+            'n' => IN19ABitsIndex::Nano,
+            'κ' => IN19ABitsIndex::Kelvin,
+            'k' => IN19ABitsIndex::Kelvin,
+            'K' => IN19ABitsIndex::Kelvin,
+            'ₘ' => IN19ABitsIndex::MSmall,
+            'm' => IN19ABitsIndex::MSmall,
+            'P' => IN19ABitsIndex::P,
+            'Μ' => IN19ABitsIndex::M,
+            '%' => IN19ABitsIndex::Percent,
+            ' ' => IN19ABitsIndex::Blank,
+            _ => IN19ABitsIndex::Blank,
+        };
+        tube.set_cathode(bit_index);
+        tube
     }
 }
 
