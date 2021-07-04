@@ -10,11 +10,26 @@ use typenum::{U10, U2, U96};
 use std::time::Duration;
 
 //TODO: use as generic type parameter for DisplayMessages and ClockDisplay
+// #[allow(dead_code)]
+// pub enum ClockType {
+//     NCS3148C(NCS3148C),
+//     NCS3186(NCS3186),
+// }
+
 #[allow(dead_code)]
-pub enum ClockType {
-    _9Tubes,
-    _6Tubes,
+pub struct NCS3186 {
+    pub t0: Option<NumericTube>,
+    pub t1: Option<NumericTube>,
+    pub s0: Option<Separator>,
+    pub t2: Option<NumericTube>,
+    pub t3: Option<NumericTube>,
+    pub s1: Option<Separator>,
+    pub t4: Option<NumericTube>,
+    pub t5: Option<NumericTube>,
+    pub off_linger: Option<Duration>,
+    pub on_linger: Option<Duration>,
 }
+
 
 #[allow(dead_code)]
 pub enum DisplayElement {
@@ -32,25 +47,32 @@ impl DisplayMessageStringUtils {
         s
     }
 }
-
-pub struct DisplayMessage {
-    pub t0: NumericTube,
-    pub t1: NumericTube,
-    pub s0: Separator,
-    pub t2: NumericTube,
-    pub t3: NumericTube,
-    pub s1: Separator,
-    pub t4: NumericTube,
-    pub t5: NumericTube,
-    pub s2: Separator,
-    pub t6: NumericTube,
-    pub t7: NumericTube,
-    pub t8: IN19ATube,
-    pub off_linger: Duration,
-    pub on_linger: Duration,
+pub trait DisplayMessage {
+    fn to_raw(&self) -> BitArray::<u8, U96>;
+    fn from_string(time_string: String, off_linger: Option<Duration>, on_linger: Option<Duration>) -> Self
+        where Self: Sized;
+    fn get_off_linger(&self) -> Option<Duration>;
+    fn get_on_linger(&self) -> Option<Duration>;
 }
 
-impl DisplayMessage {
+pub struct NCS3148C {
+    pub t0: Option<NumericTube>,
+    pub t1: Option<NumericTube>,
+    pub s0: Option<Separator>,
+    pub t2: Option<NumericTube>,
+    pub t3: Option<NumericTube>,
+    pub s1: Option<Separator>,
+    pub t4: Option<NumericTube>,
+    pub t5: Option<NumericTube>,
+    pub s2: Option<Separator>,
+    pub t6: Option<NumericTube>,
+    pub t7: Option<NumericTube>,
+    pub t8: Option<IN19ATube>,
+    pub off_linger: Option<Duration>,
+    pub on_linger: Option<Duration>,
+}
+
+impl DisplayMessage for NCS3148C {
     // 0-1 s2
     // 2-11 t8
     // 12-21 t7
@@ -63,31 +85,33 @@ impl DisplayMessage {
     // 66-75 t2
     // 76-85 t1
     // 86-95 t0
-    pub(crate) fn to_raw(&self) -> BitArray::<u8, U96> {
+    fn to_raw(&self) -> BitArray::<u8, U96> {
         // let mut combined_vec:BitVec<u8> = BitVec::<u8>::new();
         // combined_vec.reserve(96);
         // combined_vec.append(&mut self.s2.get_bits().iter().copied().collect());
+        let sep_default = BitVec::<u8>::from_iter(BitArray::<u8, U2>::from_elem(false).iter());
+        let tube_default = BitVec::<u8>::from_iter(BitArray::<u8, U10>::from_elem(false).iter());
         vec![
-            self.s2.get_bits().iter(),
-            self.t8.get_bits().iter(),
-            self.t7.get_bits().iter(),
-            self.t6.get_bits().iter(),
-            self.s1.get_bits().iter(),
-            self.t5.get_bits().iter(),
-            self.t4.get_bits().iter(),
-            self.t3.get_bits().iter(),
-            self.s0.get_bits().iter(),
-            self.t2.get_bits().iter(),
-            self.t1.get_bits().iter(),
-            self.t0.get_bits().iter(),
+            self.s2.as_ref().map(|v| v.get_bits()).unwrap_or(sep_default.clone()).iter(),
+            self.t8.as_ref().map(|v| v.get_bits()).unwrap_or(tube_default.clone()).iter(),
+            self.t7.as_ref().map(|v| v.get_bits()).unwrap_or(tube_default.clone()).iter(),
+            self.t6.as_ref().map(|v| v.get_bits()).unwrap_or(tube_default.clone()).iter(),
+            self.s1.as_ref().map(|v| v.get_bits()).unwrap_or(sep_default.clone()).iter(),
+            self.t5.as_ref().map(|v| v.get_bits()).unwrap_or(tube_default.clone()).iter(),
+            self.t4.as_ref().map(|v| v.get_bits()).unwrap_or(tube_default.clone()).iter(),
+            self.t3.as_ref().map(|v| v.get_bits()).unwrap_or(tube_default.clone()).iter(),
+            self.s0.as_ref().map(|v| v.get_bits()).unwrap_or(sep_default.clone()).iter(),
+            self.t2.as_ref().map(|v| v.get_bits()).unwrap_or(tube_default.clone()).iter(),
+            self.t1.as_ref().map(|v| v.get_bits()).unwrap_or(tube_default.clone()).iter(),
+            self.t0.as_ref().map(|v| v.get_bits()).unwrap_or(tube_default.clone()).iter(),
         ].into_iter().flatten().collect()
     }
 
     // HH:MM:SS.ccS
-    pub fn from_string(time_string: String, off_linger: Option<Duration>, on_linger: Option<Duration>) -> DisplayMessage {
+    fn from_string(time_string: String, off_linger: Option<Duration>, on_linger: Option<Duration>) -> NCS3148C {
         // println!("Showing time: {}", time_string);
         let cs: Vec<char> = time_string.chars().collect::<Vec<_>>();
-        DisplayMessage {
+        NCS3148C {
             t0: NumericTube::from_char(cs[0]),
             t1: NumericTube::from_char(cs[1]),
             s0: Separator::from_char(cs[2]),
@@ -100,14 +124,31 @@ impl DisplayMessage {
             t6: NumericTube::from_char(cs[9]),
             t7: NumericTube::from_char(cs[10]),
             t8: IN19ATube::from_char(cs[11]),
-            off_linger: off_linger.unwrap_or(Duration::from_micros(0)),
-            on_linger: on_linger.unwrap_or(Duration::from_micros(0)),
+            off_linger: off_linger,
+            on_linger: on_linger,
         }
     }
+    fn get_off_linger(&self) -> Option<Duration> {
+        self.off_linger
+    }
+    fn get_on_linger(&self) -> Option<Duration> {
+        self.on_linger
+    }
+}
+
+#[allow(dead_code)]
+pub struct AntiPoisonAnimation {
+    pub start_time: DateTime<Local>,
+    pub duration: Duration,
+}
+impl AntiPoisonAnimation {
+
 }
 
 pub trait Tube {
     fn get_bits(&self) -> BitVec<u8>;
+    fn from_char(c:char) -> Option<Self>
+        where Self: Sized;
 }
 
 pub struct NumericTube {
@@ -117,6 +158,26 @@ pub struct NumericTube {
 impl Tube for NumericTube {
     fn get_bits(&self) -> BitVec<u8> {
         BitVec::<u8>::from_iter(self.bits.iter())
+    }
+    fn from_char(c: char) -> Option<NumericTube> {
+        let mut tube: NumericTube = NumericTube {
+            bits: BitArray::<u8, U10>::from_elem(false)
+        };
+        let bit_index = match c {
+            '0' => NumericBitsIndex::_0,
+            '1' => NumericBitsIndex::_1,
+            '2' => NumericBitsIndex::_2,
+            '3' => NumericBitsIndex::_3,
+            '4' => NumericBitsIndex::_4,
+            '5' => NumericBitsIndex::_5,
+            '6' => NumericBitsIndex::_6,
+            '7' => NumericBitsIndex::_7,
+            '8' => NumericBitsIndex::_8,
+            '9' => NumericBitsIndex::_9,
+            _ => return None,//NumericBitsIndex::BLANK,
+        };
+        tube.set_cathode(bit_index);
+        Some(tube)
     }
 }
 
@@ -135,26 +196,6 @@ impl NumericTube {
             NumericBitsIndex::BLANK => (),
             _ => self.bits.set(bit_index as usize, true),
         }
-    }
-    pub fn from_char(c: char) -> NumericTube {
-        let mut tube: NumericTube = NumericTube {
-            bits: BitArray::<u8, U10>::from_elem(false)
-        };
-        let bit_index = match c {
-            '0' => NumericBitsIndex::_0,
-            '1' => NumericBitsIndex::_1,
-            '2' => NumericBitsIndex::_2,
-            '3' => NumericBitsIndex::_3,
-            '4' => NumericBitsIndex::_4,
-            '5' => NumericBitsIndex::_5,
-            '6' => NumericBitsIndex::_6,
-            '7' => NumericBitsIndex::_7,
-            '8' => NumericBitsIndex::_8,
-            '9' => NumericBitsIndex::_9,
-            _ => NumericBitsIndex::BLANK,
-        };
-        tube.set_cathode(bit_index);
-        tube
     }
 }
 
@@ -180,6 +221,34 @@ impl Tube for IN19ATube {
     fn get_bits(&self) -> BitVec<u8> {
         BitVec::<u8>::from_iter(self.bits.iter())
     }
+
+    fn from_char(c: char) -> Option<IN19ATube> {
+        let mut tube: IN19ATube = IN19ATube {
+            bits: BitArray::<u8, U10>::from_elem(false)
+        };
+        let bit_index = match c {
+            '℃' => IN19ABitsIndex::Celsius,
+            'c' => IN19ABitsIndex::Celsius,
+            'C' => IN19ABitsIndex::Celsius,
+            'μ' => IN19ABitsIndex::Micro,
+            'u' => IN19ABitsIndex::Micro,
+            'η' => IN19ABitsIndex::Nano,
+            'n' => IN19ABitsIndex::Nano,
+            'κ' => IN19ABitsIndex::Kelvin,
+            'k' => IN19ABitsIndex::Kelvin,
+            'K' => IN19ABitsIndex::Kelvin,
+            'ₘ' => IN19ABitsIndex::MSmall,
+            'm' => IN19ABitsIndex::MSmall,
+            'P' => IN19ABitsIndex::P,
+            'Μ' => IN19ABitsIndex::M,
+            '%' => IN19ABitsIndex::Percent,
+            ' ' => return None, //IN19ABitsIndex::Blank,
+            _ => return None, //IN19ABitsIndex::Blank,
+        };
+        tube.set_cathode(bit_index);
+        Some(tube)
+    }
+
 }
 
 #[allow(dead_code)]
@@ -200,32 +269,6 @@ impl IN19ATube {
         }
     }
 
-    pub fn from_char(c: char) -> IN19ATube {
-        let mut tube: IN19ATube = IN19ATube {
-            bits: BitArray::<u8, U10>::from_elem(false)
-        };
-        let bit_index = match c {
-            '℃' => IN19ABitsIndex::Celsius,
-            'c' => IN19ABitsIndex::Celsius,
-            'C' => IN19ABitsIndex::Celsius,
-            'μ' => IN19ABitsIndex::Micro,
-            'u' => IN19ABitsIndex::Micro,
-            'η' => IN19ABitsIndex::Nano,
-            'n' => IN19ABitsIndex::Nano,
-            'κ' => IN19ABitsIndex::Kelvin,
-            'k' => IN19ABitsIndex::Kelvin,
-            'K' => IN19ABitsIndex::Kelvin,
-            'ₘ' => IN19ABitsIndex::MSmall,
-            'm' => IN19ABitsIndex::MSmall,
-            'P' => IN19ABitsIndex::P,
-            'Μ' => IN19ABitsIndex::M,
-            '%' => IN19ABitsIndex::Percent,
-            ' ' => IN19ABitsIndex::Blank,
-            _ => IN19ABitsIndex::Blank,
-        };
-        tube.set_cathode(bit_index);
-        tube
-    }
 }
 
 #[allow(dead_code)]
@@ -250,6 +293,21 @@ impl Tube for Separator {
     fn get_bits(&self) -> BitVec<u8> {
         BitVec::<u8>::from_iter(self.bits.iter())
     }
+
+    fn from_char(c: char) -> Option<Separator> {
+        let mut tube: Separator = Separator {
+            bits: BitArray::<u8, U2>::from_elem(false)
+        };
+        let bit_index = match c {
+            ' ' => SeparatorBitsIndex::BLANK,
+            ':' => SeparatorBitsIndex::BOTH,
+            '.' => SeparatorBitsIndex::BOTTOM,
+            '\'' => SeparatorBitsIndex::TOP,
+            _ => return None, //SeparatorBitsIndex::BLANK,
+        };
+        tube.set_indicators(bit_index);
+        Some(tube)
+    }
 }
 
 #[allow(dead_code)]
@@ -262,35 +320,12 @@ impl Separator {
         tube
     }
 
-    pub fn from_char(c: char) -> Separator {
-        let mut tube: Separator = Separator {
-            bits: BitArray::<u8, U2>::from_elem(false)
-        };
-        let bit_index = match c {
-            ' ' => SeparatorBitsIndex::BLANK,
-            ':' => SeparatorBitsIndex::BOTH,
-            '.' => SeparatorBitsIndex::BOTTOM,
-            '\'' => SeparatorBitsIndex::TOP,
-            _ => SeparatorBitsIndex::BLANK,
-        };
-        tube.set_indicators(bit_index);
-        tube
-    }
-
     fn set_indicators(&mut self, bit_index: SeparatorBitsIndex) {
         self.bits.clear();
         match bit_index {
             SeparatorBitsIndex::BLANK => (),
             SeparatorBitsIndex::BOTH => self.bits.negate(),
             _ => self.bits.set(bit_index as usize, true),
-        }
-    }
-    //nobody uses centiseconds and hundredths of a second is such a mouthful...
-    fn from_hundos_string(hundos: String) -> Separator {
-        let cs = hundos.parse::<u16>();
-        match cs {
-            Ok(secs) if secs < 50 => Separator::new(SeparatorBitsIndex::BOTH),
-            _ => Separator::new(SeparatorBitsIndex::BLANK),
         }
     }
 }

@@ -5,6 +5,7 @@ mod clock_driver;
 
 use tokio::runtime::{Builder};
 use std::error::Error;
+use crate::clock_objects::{NCS3148C, DisplayMessage};
 
 const FPS_HZ: f32 = 5000f32; //Approximate Max is 5kHz
 
@@ -46,17 +47,7 @@ fn timeloop(mut clock: ClockDisplay) {
         frame_interval_us = frame_interval_us - 100;
     }
     println!("Clock Interval {:?}us", frame_interval_us);
-    // let mut frame_interval = tokio::time::interval(Duration::from_micros(interval_micros));
     loop {
         clock.show_next_frame(frame_interval_us).expect("Clock Display Failed");
-
-        //ends up being about interval_micros + 100μs
-        //thread::sleep(Duration::from_micros(frame_interval));
-
-        //clumps of no delay followed by 1ms pauses
-        // frame_interval.tick().await;
-
-        //ends up being about 1.2ms
-        // time::sleep(Duration::from_micros(interval_micros)).await;
     }
 }

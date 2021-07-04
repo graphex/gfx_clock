@@ -10,7 +10,7 @@ use rppal::spi::{Bus, Mode, SlaveSelect, Spi};
 use rppal::system::DeviceInfo;
 use typenum::U96;
 
-use crate::clock_objects::{DisplayMessage, DisplayMessageStringUtils};
+use crate::clock_objects::{DisplayMessage, DisplayMessageStringUtils, NCS3148C, NCS3186};
 use std::time::Duration;
 
 //The latch enable pin GPIO number. Should be low during writes. Also tied to strobe on chips.
@@ -37,15 +37,15 @@ impl ClockDisplay {
 
         Ok(cd)
     }
-    fn write_frame(&mut self, off_linger: Duration, on_linger: Duration) -> Result<(), Box<dyn Error>> {
+    fn write_frame(&mut self, off_linger: Option<Duration>, on_linger: Option<Duration>) -> Result<(), Box<dyn Error>> {
         if self.le_pin.is_set_low() {
             println!("Latch already set low by another process, aborting write!")
         } else {
             self.le_pin.set_low();
             self.spi.write(&*self.raw_message.to_bytes())?;
-            thread::sleep(off_linger);
+            off_linger.map(|off| thread::sleep(off));
             self.le_pin.set_high();
-            thread::sleep(on_linger);
+            on_linger.map(|on| thread::sleep(on));
         }
         Ok(())
     }
@@ -54,13 +54,13 @@ impl ClockDisplay {
             self.raw_message.clear();
             self.raw_message.set(i, true);
             println!("i: {}, raw:{:?}", i, self.raw_message);
-            self.write_frame(Duration::from_millis(0), Duration::from_millis(50))?;
+            self.write_frame(None, Some(Duration::from_millis(50)))?;
         }
         Ok(())
     }
-    pub fn show(&mut self, dm: DisplayMessage) -> Result<(), Box<dyn Error>> {
+    pub fn show<T:DisplayMessage>(&mut self, dm: T) -> Result<(), Box<dyn Error>> {
         self.raw_message = dm.to_raw();
-        self.write_frame(dm.off_linger, dm.on_linger)
+        self.write_frame(dm.get_off_linger(), dm.get_on_linger())
     }
 
     pub fn show_next_frame(&mut self, frame_interval_us: u64) -> Result<(), Box<dyn Error>> {
@@ -72,7 +72,7 @@ impl ClockDisplay {
             // msg_string = "            ".to_string();
         }
         let (off_linger, on_linger) = self.pwm_seconds_animation(local.timestamp_subsec_micros(), frame_interval_us);
-        self.show(DisplayMessage::from_string(msg_string, Some(off_linger), Some(on_linger)))
+        self.show(NCS3148C::from_string(msg_string, Some(off_linger), Some(on_linger)))
     }
     //a pulse frequency modulation-based animation
     fn time_separators_animation(&self, micros: u32) -> bool {
