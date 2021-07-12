@@ -5,7 +5,7 @@ mod clock_driver;
 
 use tokio::runtime::{Builder};
 use std::error::Error;
-use crate::clock_objects::{NCS3148C, DisplayMessage};
+use crate::clock_objects::{NCS3148CMessage, DisplayMessage};
 
 const FPS_HZ: f32 = 5000f32; //Approximate Max is 5kHz
 

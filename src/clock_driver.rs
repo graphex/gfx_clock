@@ -10,7 +10,7 @@ use rppal::spi::{Bus, Mode, SlaveSelect, Spi};
 use rppal::system::DeviceInfo;
 use typenum::U96;
 
-use crate::clock_objects::{DisplayMessage, DisplayMessageStringUtils, NCS3148C, NCS3186};
+use crate::clock_objects::{DisplayMessage, DisplayMessageStringUtils, NCS3148CMessage, NCS3186Message};
 use std::time::Duration;
 
 //The latch enable pin GPIO number. Should be low during writes. Also tied to strobe on chips.
@@ -72,7 +72,7 @@ impl ClockDisplay {
             // msg_string = "            ".to_string();
         }
         let (off_linger, on_linger) = self.pwm_seconds_animation(local.timestamp_subsec_micros(), frame_interval_us);
-        self.show(NCS3148C::from_string(msg_string, Some(off_linger), Some(on_linger)))
+        self.show(NCS3148CMessage::from_string(msg_string, Some(off_linger), Some(on_linger)))
     }
     //a pulse frequency modulation-based animation
     fn time_separators_animation(&self, micros: u32) -> bool {

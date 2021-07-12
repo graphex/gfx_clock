@@ -17,7 +17,7 @@ use std::time::Duration;
 // }
 
 #[allow(dead_code)]
-pub struct NCS3186 {
+pub struct NCS3186Message {
     pub t0: Option<NumericTube>,
     pub t1: Option<NumericTube>,
     pub s0: Option<Separator>,
@@ -55,7 +55,7 @@ pub trait DisplayMessage {
     fn get_on_linger(&self) -> Option<Duration>;
 }
 
-pub struct NCS3148C {
+pub struct NCS3148CMessage {
     pub t0: Option<NumericTube>,
     pub t1: Option<NumericTube>,
     pub s0: Option<Separator>,
@@ -72,7 +72,7 @@ pub struct NCS3148C {
     pub on_linger: Option<Duration>,
 }
 
-impl DisplayMessage for NCS3148C {
+impl DisplayMessage for NCS3148CMessage {
     // 0-1 s2
     // 2-11 t8
     // 12-21 t7
@@ -108,10 +108,10 @@ impl DisplayMessage for NCS3148C {
     }
 
     // HH:MM:SS.ccS
-    fn from_string(time_string: String, off_linger: Option<Duration>, on_linger: Option<Duration>) -> NCS3148C {
+    fn from_string(time_string: String, off_linger: Option<Duration>, on_linger: Option<Duration>) -> NCS3148CMessage {
         // println!("Showing time: {}", time_string);
         let cs: Vec<char> = time_string.chars().collect::<Vec<_>>();
-        NCS3148C {
+        NCS3148CMessage {
             t0: NumericTube::from_char(cs[0]),
             t1: NumericTube::from_char(cs[1]),
             s0: Separator::from_char(cs[2]),
