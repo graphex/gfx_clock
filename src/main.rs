@@ -1,17 +1,40 @@
-use crate::clock_driver::*;
+use crate::{clock_driver::*, clock_objects::ClockType};
 
+mod tube_objects;
 mod clock_objects;
 mod clock_driver;
 
 use tokio::runtime::{Builder};
 use std::error::Error;
+use std::io::ErrorKind;
 use crate::clock_objects::{NCS3148CMessage, DisplayMessage};
+use std::{error, fmt};
 
 const FPS_HZ: f32 = 5000f32; //Approximate Max is 5kHz
 
 pub type Result<T, E = Box<dyn Error>> = std::result::Result<T, E>;
 
+#[derive(Debug)]
+enum ArgumentError { ClockTypeNeeded }
+impl Error for ArgumentError {}
+impl fmt::Display for ArgumentError {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Specify clock type as the first arg, NCS3148C | NCS3186")
+    }
+}
+
+
+
 fn main() -> Result<()> {
+    let clock_type = match std::env::args().nth(1).as_deref() {
+        Some("NCS3148C") => ClockType::NCS3148C,
+        Some("NCS3186") => ClockType::NCS3186,
+        _ => {
+            println!("Specify clock type as the first arg, NCS3148C | NCS3186");
+            return Result::Err(Box::new(ArgumentError::ClockTypeNeeded))
+        }
+    };
     let runtime = Builder::new_multi_thread()
         .enable_all()
         .worker_threads(2)
@@ -19,7 +42,7 @@ fn main() -> Result<()> {
         .thread_stack_size(2 * 1024 * 1024)
         .build()?;
     runtime.block_on(async {
-        runtime.spawn_blocking(|| { timeloop(ClockDisplay::new().expect("Clock Initialization Failed")) });
+        runtime.spawn_blocking(|| { timeloop(ClockDisplay::new(clock_type).expect("Clock Initialization Failed")) });
         wait_for_signal().await;
         println!("Exiting clock");
     });
@@ -41,7 +64,7 @@ async fn wait_for_signal() {
 
 /// This has to be a pretty hot loop, looking for 200μs or higher precision for 5kHz
 /// and async isn't cutting it, with around 1ms being the min delay
-fn timeloop(mut clock: ClockDisplay) {
+fn timeloop(mut clock: ClockDisplay) -> ! {
     let mut frame_interval_us = (1f32 / FPS_HZ * 1000f32 * 1000f32) as u64;
     if frame_interval_us > 100 {
         frame_interval_us = frame_interval_us - 100;
