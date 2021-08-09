@@ -7,7 +7,7 @@ use std::time::Duration;
 use bit_array::BitArray;
 use bit_vec::BitVec;
 use chrono::prelude::*;
-use typenum::{U10, U2, U96};
+use typenum::{U10, U2, U64, U96};
 use crate::tube_objects::{NumericTube, Separator, IN19ATube, Tube};
 
 #[allow(dead_code)]
@@ -17,7 +17,13 @@ pub enum ClockType {
     NCS3186,
 }
 
+// pub enum RegisterSizes {
+//     U64(typenum::U64),
+//     U96(typenum::U64),
+// }
+
 pub trait DisplayMessage {
+    type L;
     fn to_raw(&self) -> BitArray::<u8, U96>;
     fn from_string(time_string: String, off_linger: Option<Duration>, on_linger: Option<Duration>) -> Self
         where Self: Sized;
@@ -59,6 +65,8 @@ pub struct NCS3148CMessage {
 }
 
 impl DisplayMessage for NCS3148CMessage {
+    type L = U96;
+
     // Bit Offsets:
     // 0-1 s2
     // 2-11 t8

@@ -6,9 +6,9 @@ mod clock_driver;
 
 use tokio::runtime::{Builder};
 use std::error::Error;
-use std::io::ErrorKind;
 use crate::clock_objects::{NCS3148CMessage, DisplayMessage};
-use std::{error, fmt};
+use std::{fmt};
+use typenum::{U96};
 
 const FPS_HZ: f32 = 5000f32; //Approximate Max is 5kHz
 
@@ -41,8 +41,14 @@ fn main() -> Result<()> {
         .thread_name("clockworker")
         .thread_stack_size(2 * 1024 * 1024)
         .build()?;
+    let clock_driver = match clock_type {
+        ClockType::NCS3148C => NCS3148CDriver::new(),
+        ClockType::NCS3186 => NCS3148CDriver::new(),
+    }.expect("Clock Initialization Failed");
     runtime.block_on(async {
-        runtime.spawn_blocking(|| { timeloop(ClockDisplay::new(clock_type).expect("Clock Initialization Failed")) });
+        runtime.spawn_blocking(|| {
+            timeloop(clock_driver)
+        });
         wait_for_signal().await;
         println!("Exiting clock");
     });
@@ -64,7 +70,7 @@ async fn wait_for_signal() {
 
 /// This has to be a pretty hot loop, looking for 200μs or higher precision for 5kHz
 /// and async isn't cutting it, with around 1ms being the min delay
-fn timeloop(mut clock: ClockDisplay) -> ! {
+fn timeloop<T:ClockDriver>(mut clock: T) -> ! {
     let mut frame_interval_us = (1f32 / FPS_HZ * 1000f32 * 1000f32) as u64;
     if frame_interval_us > 100 {
         frame_interval_us = frame_interval_us - 100;

@@ -18,36 +18,52 @@ const LE_PIN: u8 = 22;
 
 pub trait ClockDriver {
     fn show_next_frame(&mut self, frame_interval_us: u64) -> Result<(), Box<dyn Error>>;
-    fn show<M:DisplayMessage>(&mut self, dm: M) -> Result<(), Box<dyn Error>>;
-    fn write_frame(&mut self, off_linger: Option<Duration>, on_linger: Option<Duration>) -> Result<(), Box<dyn Error>> ;
+    // fn show<M: DisplayMessage>(&mut self, dm: M) -> Result<(), Box<dyn Error>>;
+    fn write_frame(&mut self, off_linger: Option<Duration>, on_linger: Option<Duration>) -> Result<(), Box<dyn Error>>;
 }
 
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct ClockDisplay {
+pub struct NCS3148CDriver {
     le_pin: OutputPin,
     spi: Spi,
     raw_message: BitArray::<u8, U96>,
 }
 
-// impl<M:NCS3148CMessage,L:U96> ClockDriver for ClockDisplay<M,L> {
-// }
-impl ClockDriver for ClockDisplay {
+impl NCS3148CDriver {
+    const CLOCK_TYPE:ClockType = ClockType::NCS3148C;
+
+    pub fn new() -> Result<NCS3148CDriver, Box<dyn Error>>
+    {
+        println!("Running a {:?} clock from a {}.", NCS3148CDriver::CLOCK_TYPE, DeviceInfo::new()?.model());
+        let mut cd = NCS3148CDriver {
+            le_pin: Gpio::new()?.get(LE_PIN)?.into_output(),
+            spi: Spi::new(Bus::Spi0, SlaveSelect::Ss0, 8_000_000, Mode::Mode2)?,
+            raw_message: BitArray::<u8, U96>::from_elem(false),
+        };
+        cd.le_pin.set_high();
+
+        Ok(cd)
+    }
+
+    fn show(&mut self, dm: NCS3148CMessage) -> Result<(), Box<dyn Error>> {
+        self.raw_message = dm.to_raw();
+        self.write_frame(dm.get_off_linger(), dm.get_on_linger())
+    }
+}
+impl ClockDriver for NCS3148CDriver {
+
 
     fn show_next_frame(&mut self, frame_interval_us: u64) -> Result<(), Box<dyn Error>> {
         let local: DateTime<Local> = Local::now();
         let mut msg_string = DisplayMessageStringUtils::for_local(local);
-        if !self.time_separators_animation(local.timestamp_subsec_micros()) {
+        if !AnimationUtils::time_separators_animation(local.timestamp_subsec_micros()) {
             msg_string = msg_string.replace(":", " ");
             msg_string = msg_string.replace(".", " ");
             // msg_string = "            ".to_string();
         }
-        let (off_linger, on_linger) = self.pwm_seconds_animation(local.timestamp_subsec_micros(), frame_interval_us);
+        let (off_linger, on_linger) = AnimationUtils::pwm_seconds_animation(local.timestamp_subsec_micros(), frame_interval_us);
         self.show(NCS3148CMessage::from_string(msg_string, Some(off_linger), Some(on_linger)))
-    }
-    fn show<M:DisplayMessage>(&mut self, dm: M) -> Result<(), Box<dyn Error>> {
-        self.raw_message = dm.to_raw();
-        self.write_frame(dm.get_off_linger(), dm.get_on_linger())
     }
     fn write_frame(&mut self, off_linger: Option<Duration>, on_linger: Option<Duration>) -> Result<(), Box<dyn Error>> {
         if self.le_pin.is_set_low() {
@@ -61,33 +77,13 @@ impl ClockDriver for ClockDisplay {
         }
         Ok(())
     }
-
 }
 
+struct AnimationUtils {}
 #[allow(dead_code)]
-impl ClockDisplay {
-    pub fn new(clock_type:ClockType) -> Result<ClockDisplay, Box<dyn Error>> {
-        println!("Running a {:?} clock from a {}.", clock_type, DeviceInfo::new()?.model());
-        let mut cd = match clock_type {
-            ClockType::NCS3148C => ClockDisplay {
-                le_pin: Gpio::new()?.get(LE_PIN)?.into_output(),
-                spi: Spi::new(Bus::Spi0, SlaveSelect::Ss0, 8_000_000, Mode::Mode2)?,
-                raw_message: BitArray::<u8, U96>::from_elem(false),
-            },
-            ClockType::NCS3186 => ClockDisplay {
-                le_pin: Gpio::new()?.get(LE_PIN)?.into_output(),
-                spi: Spi::new(Bus::Spi0, SlaveSelect::Ss0, 8_000_000, Mode::Mode2)?,
-                // raw_message: BitArray::<u8, U64>::from_elem(false),
-                raw_message: BitArray::<u8, U96>::from_elem(false),
-            },
-        };
-        cd.le_pin.set_high();
-
-        Ok(cd)
-    }
-
+impl AnimationUtils {
     //a pulse frequency modulation-based animation
-    fn time_separators_animation(&self, micros: u32) -> bool {
+    pub fn time_separators_animation(micros: u32) -> bool {
         if micros < 750_000 {
             let p: f32;
             p = Bounce::ease_in(micros as f32, 255f32, -255f32, 750_000f32);
@@ -96,7 +92,7 @@ impl ClockDisplay {
             false
         }
     }
-    fn pwm_seconds_animation(&self, micros: u32, frame_interval_us: u64) -> (Duration, Duration) {
+    pub fn pwm_seconds_animation(micros: u32, frame_interval_us: u64) -> (Duration, Duration) {
         if micros < 750_000 {
             let p: f32;
             p = Sine::ease_in(micros as f32, 1f32, -1f32, 750_000f32);
@@ -105,7 +101,7 @@ impl ClockDisplay {
             (Duration::from_micros(frame_interval_us), Duration::from_micros(0))
         } else {
             let p: f32;
-            p = Quint::ease_in((micros-900_000u32) as f32, 0f32, 1f32, 100_000f32);
+            p = Quint::ease_in((micros - 900_000u32) as f32, 0f32, 1f32, 100_000f32);
             (Duration::from_micros(((1f32 - p) * frame_interval_us as f32) as u64), Duration::from_micros((p * frame_interval_us as f32) as u64))
         }
     }
