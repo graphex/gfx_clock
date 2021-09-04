@@ -7,11 +7,8 @@ use rppal::system::DeviceInfo;
 use std::error::Error;
 
 //RGB Pins
-#[allow(dead_code)]
 const R_PIN: u8 = 20;
-#[allow(dead_code)]
 const G_PIN: u8 = 16;
-#[allow(dead_code)]
 const B_PIN: u8 = 21;
 
 #[derive(Debug)]
@@ -21,7 +18,6 @@ pub struct LedDisplay {
     b_pin: OutputPin,
 }
 
-#[allow(dead_code)]
 impl LedDisplay {
     pub fn new() -> Result<LedDisplay, Box<dyn Error>> {
         println!("Running LEDs from a {}.", DeviceInfo::new()?.model());

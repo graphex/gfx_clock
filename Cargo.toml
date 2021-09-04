@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 tokio = { version = "1.6.1", features = ["full"] }
-rppal = "0.12.0"
+rppal = {version = "0.12.0", features = ["hal-unproven"]}
 typenum = "1.13.0"
 bit-array = "0.4.4"
 bit-vec = "0.6.3"
@@ -16,3 +16,7 @@ chrono = "0.4.19"
 easer = "0.2.1"
 rand = "0.8.3"
 snafu = "0.6.9"
+embedded-hal = "0.2.6"
+one-wire-bus = "0.1.1"
+ds18b20 = "0.1.1"
+spin_sleep = "1.0.0"

@@ -10,7 +10,6 @@ use chrono::prelude::*;
 use typenum::{U10, U2, U64, U96};
 use crate::tube_objects::{NumericTube, Separator, IN19ATube, Tube};
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub enum ClockType {
     NCS3148C,
@@ -31,7 +30,6 @@ pub trait DisplayMessage {
     fn get_on_linger(&self) -> Option<Duration>;
 }
 
-#[allow(dead_code)]
 pub struct NCS3186Message {
     pub t0: Option<NumericTube>,
     pub t1: Option<NumericTube>,
@@ -141,12 +139,10 @@ impl DisplayMessageStringUtils {
     }
 }
 
-#[allow(dead_code)]
 pub trait OverlayAnimation<T:DisplayMessage> {
 
 }
 
-#[allow(dead_code)]
 pub struct AntiPoisonAnimation {
     pub start_time: DateTime<Local>,
     pub duration: Duration,

@@ -23,7 +23,6 @@ pub trait ClockDriver {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct NCS3148CDriver {
     le_pin: OutputPin,
     spi: Spi,
@@ -80,7 +79,6 @@ impl ClockDriver for NCS3148CDriver {
 }
 
 struct AnimationUtils {}
-#[allow(dead_code)]
 impl AnimationUtils {
     //a pulse frequency modulation-based animation
     pub fn time_separators_animation(micros: u32) -> bool {

@@ -42,7 +42,6 @@ impl Tube for NumericTube {
     }
 }
 
-#[allow(dead_code)]
 impl NumericTube {
     pub fn new(bit_index: NumericBitsIndex) -> NumericTube {
         let mut tube: NumericTube = NumericTube {
@@ -112,7 +111,6 @@ impl Tube for IN19ATube {
 
 }
 
-#[allow(dead_code)]
 impl IN19ATube {
     pub fn new(bit_index: IN19ABitsIndex) -> IN19ATube {
         let mut tube: IN19ATube = IN19ATube {
@@ -132,7 +130,6 @@ impl IN19ATube {
 
 }
 
-#[allow(dead_code)]
 pub enum IN19ABitsIndex {
     //_ _ ℃ μ η κ ₘ Ρ Μ % (IN-19A)
     Celsius = 2,
@@ -171,7 +168,6 @@ impl Tube for Separator {
     }
 }
 
-#[allow(dead_code)]
 impl Separator {
     pub fn new(bit_index: SeparatorBitsIndex) -> Separator {
         let mut tube: Separator = Separator {
