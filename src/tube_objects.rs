@@ -5,13 +5,19 @@ use core::option::Option;
 use core::option::Option::{None, Some};
 use std::iter::FromIterator;
 use typenum::{U10, U2, U96};
+use crate::errors::*;
 
 pub trait Tube {
     fn get_bits(&self) -> BitVec<u8>;
-    fn from_char(c:char) -> Option<Self>
+    fn from_char(c:char) -> DisplayMessageResult<Option<Self>>
         where Self: Sized;
 }
 
+pub enum Tubes {
+    NumericTube(NumericTube),
+    IN19ATube(IN19ATube),
+    Separator(Separator),
+}
 pub struct NumericTube {
     bits: BitArray::<u8, U10>,
 }
@@ -20,7 +26,7 @@ impl Tube for NumericTube {
     fn get_bits(&self) -> BitVec<u8> {
         BitVec::<u8>::from_iter(self.bits.iter())
     }
-    fn from_char(c: char) -> Option<NumericTube> {
+    fn from_char(c: char) -> DisplayMessageResult<Option<NumericTube>> {
         let mut tube: NumericTube = NumericTube {
             bits: BitArray::<u8, U10>::from_elem(false)
         };
@@ -35,10 +41,11 @@ impl Tube for NumericTube {
             '7' => NumericBitsIndex::_7,
             '8' => NumericBitsIndex::_8,
             '9' => NumericBitsIndex::_9,
-            _ => return None,//NumericBitsIndex::BLANK,
+            ' ' => NumericBitsIndex::BLANK,
+            _ => return Err(DisplayMessageError::UnexpectedCharForTubeType),
         };
         tube.set_cathode(bit_index);
-        Some(tube)
+        Ok(Some(tube))
     }
 }
 
@@ -82,7 +89,7 @@ impl Tube for IN19ATube {
         BitVec::<u8>::from_iter(self.bits.iter())
     }
 
-    fn from_char(c: char) -> Option<IN19ATube> {
+    fn from_char(c: char) -> DisplayMessageResult<Option<IN19ATube>> {
         let mut tube: IN19ATube = IN19ATube {
             bits: BitArray::<u8, U10>::from_elem(false)
         };
@@ -102,11 +109,11 @@ impl Tube for IN19ATube {
             'P' => IN19ABitsIndex::P,
             'Μ' => IN19ABitsIndex::M,
             '%' => IN19ABitsIndex::Percent,
-            ' ' => return None, //IN19ABitsIndex::Blank,
-            _ => return None, //IN19ABitsIndex::Blank,
+            ' ' => IN19ABitsIndex::Blank,
+            _ => return Err(DisplayMessageError::UnexpectedCharForTubeType),
         };
         tube.set_cathode(bit_index);
-        Some(tube)
+        Ok(Some(tube))
     }
 
 }
@@ -152,7 +159,7 @@ impl Tube for Separator {
         BitVec::<u8>::from_iter(self.bits.iter())
     }
 
-    fn from_char(c: char) -> Option<Separator> {
+    fn from_char(c: char) -> DisplayMessageResult<Option<Separator>> {
         let mut tube: Separator = Separator {
             bits: BitArray::<u8, U2>::from_elem(false)
         };
@@ -161,10 +168,10 @@ impl Tube for Separator {
             ':' => SeparatorBitsIndex::BOTH,
             '.' => SeparatorBitsIndex::BOTTOM,
             '\'' => SeparatorBitsIndex::TOP,
-            _ => return None, //SeparatorBitsIndex::BLANK,
+            _ => return Err(DisplayMessageError::UnexpectedCharForTubeType),
         };
         tube.set_indicators(bit_index);
-        Some(tube)
+        Ok(Some(tube))
     }
 }
 

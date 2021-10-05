@@ -1,13 +1,17 @@
 extern crate easer;
 extern crate typenum;
 
+use chrono::prelude::*;
+use std::error::Error;
+use std::io::{stderr, Write};
 use std::iter::FromIterator;
-use std::time::Duration;
 
-use crate::tube_objects::{IN19ATube, NumericTube, Separator, Tube};
+use crate::errors::{DisplayMessageError, DisplayMessageResult};
+use crate::tube_objects::{IN19ATube, NumericTube, Separator, Tube, Tubes};
 use bit_array::BitArray;
 use bit_vec::BitVec;
 use chrono::prelude::*;
+use chrono::Duration;
 use typenum::{U10, U2, U64, U96};
 
 #[derive(Debug)]
@@ -27,8 +31,14 @@ pub trait DisplayMessage {
     fn from_string(time_string: String, frame_lingers: LingerDurations) -> Self
     where
         Self: Sized;
+    fn set_tube(
+        &mut self,
+        tube_idx: usize,
+        disp: char,
+    ) -> ();
     fn get_off_linger(&self) -> Option<Duration>;
     fn get_on_linger(&self) -> Option<Duration>;
+    fn log_error(&self, err: &DisplayMessageError) -> ();
 }
 
 pub struct LingerDurations {
@@ -159,20 +169,41 @@ impl DisplayMessage for NCS3148CMessage {
         // println!("Showing time: {}", time_string);
         let cs: Vec<char> = time_string.chars().collect::<Vec<_>>();
         NCS3148CMessage {
-            t0: NumericTube::from_char(cs[0]),
-            t1: NumericTube::from_char(cs[1]),
-            s0: Separator::from_char(cs[2]),
-            t2: NumericTube::from_char(cs[3]),
-            t3: NumericTube::from_char(cs[4]),
-            s1: Separator::from_char(cs[5]),
-            t4: NumericTube::from_char(cs[6]),
-            t5: NumericTube::from_char(cs[7]),
-            s2: Separator::from_char(cs[8]),
-            t6: NumericTube::from_char(cs[9]),
-            t7: NumericTube::from_char(cs[10]),
-            t8: IN19ATube::from_char(cs[11]),
+            t0: NumericTube::from_char(cs[0]).unwrap_or(None),
+            t1: NumericTube::from_char(cs[1]).unwrap_or(None),
+            s0: Separator::from_char(cs[2]).unwrap_or(None),
+            t2: NumericTube::from_char(cs[3]).unwrap_or(None),
+            t3: NumericTube::from_char(cs[4]).unwrap_or(None),
+            s1: Separator::from_char(cs[5]).unwrap_or(None),
+            t4: NumericTube::from_char(cs[6]).unwrap_or(None),
+            t5: NumericTube::from_char(cs[7]).unwrap_or(None),
+            s2: Separator::from_char(cs[8]).unwrap_or(None),
+            t6: NumericTube::from_char(cs[9]).unwrap_or(None),
+            t7: NumericTube::from_char(cs[10]).unwrap_or(None),
+            t8: IN19ATube::from_char(cs[11]).unwrap_or(None),
             lingers: lingers,
         }
+    }
+    fn set_tube(
+        &mut self,
+        tube_idx: usize,
+        disp: char,
+    ) -> () {
+        match tube_idx {
+            0 => self.t0 = NumericTube::from_char(disp).unwrap_or_else(|err| {self.log_error(&err); None}),
+            1 => self.t1 = NumericTube::from_char(disp).unwrap_or_else(|err| {self.log_error(&err); None}),
+            2 => self.s0 = Separator::from_char(disp).unwrap_or_else(|err| {self.log_error(&err); None}),
+            3 => self.t2 = NumericTube::from_char(disp).unwrap_or_else(|err| {self.log_error(&err); None}),
+            4 => self.t3 = NumericTube::from_char(disp).unwrap_or_else(|err| {self.log_error(&err); None}),
+            5 => self.s1 = Separator::from_char(disp).unwrap_or_else(|err| {self.log_error(&err); None}),
+            6 => self.t4 = NumericTube::from_char(disp).unwrap_or_else(|err| {self.log_error(&err); None}),
+            7 => self.t5 = NumericTube::from_char(disp).unwrap_or_else(|err| {self.log_error(&err); None}),
+            8 => self.s2 = Separator::from_char(disp).unwrap_or_else(|err| {self.log_error(&err); None}),
+            9 => self.t6 = NumericTube::from_char(disp).unwrap_or_else(|err| {self.log_error(&err); None}),
+            10 => self.t7 = NumericTube::from_char(disp).unwrap_or_else(|err| {self.log_error(&err); None}),
+            11 => self.t8 = IN19ATube::from_char(disp).unwrap_or_else(|err| {self.log_error(&err); None}),
+            _ => self.log_error(&DisplayMessageError::TubeIndexOutOfRange),
+        };
     }
     fn get_off_linger(&self) -> Option<Duration> {
         self.lingers.off
@@ -180,4 +211,8 @@ impl DisplayMessage for NCS3148CMessage {
     fn get_on_linger(&self) -> Option<Duration> {
         self.lingers.on
     }
+    fn log_error(&self, mut err: &DisplayMessageError) -> () {
+        println!("error: {:?}", err);
+    }
+
 }

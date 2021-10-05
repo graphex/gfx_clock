@@ -1,7 +1,7 @@
-use std::thread;
-use std::time::Duration;
 use std::fmt::{Debug, Write};
 use std::sync::{Arc, RwLock};
+use std::thread;
+use std::time::Duration;
 
 use ds18b20::{Ds18b20, Resolution};
 use embedded_hal::blocking::delay::{DelayMs, DelayUs};
@@ -21,13 +21,19 @@ impl TemperatureSensor {
     const TMP_PIN: u8 = 5;
 
     pub fn new() -> TemperatureSensor {
-        TemperatureSensor{raw_degrees_c:Arc::new(RwLock::new(None))}
+        TemperatureSensor {
+            raw_degrees_c: Arc::new(RwLock::new(None)),
+        }
     }
-    
+
     pub fn run_temp_sensor(&mut self) -> ! {
         loop {
             println!("Getting Temperature");
-            let one_wire_pin = Gpio::new().unwrap().get(TemperatureSensor::TMP_PIN).unwrap().into_output();
+            let one_wire_pin = Gpio::new()
+                .unwrap()
+                .get(TemperatureSensor::TMP_PIN)
+                .unwrap()
+                .into_output();
             let mut one_wire_bus = OneWire::new(one_wire_pin).unwrap();
             let res = self.get_temperature(&mut one_wire_bus);
             match res {
@@ -76,7 +82,8 @@ impl TemperatureSensor {
                 drop(deg);
                 println!(
                     "Device at {:?} is {}°C",
-                    device_address, self.raw_degrees_c.read().unwrap().unwrap()
+                    device_address,
+                    self.raw_degrees_c.read().unwrap().unwrap()
                 );
             } else {
                 println!("No device found");

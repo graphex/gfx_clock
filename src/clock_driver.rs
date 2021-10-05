@@ -1,13 +1,14 @@
-use std::error::Error;
-use std::sync::{Arc, RwLock};
-use std::thread;
-use std::time::Duration;
-
 use bit_array::BitArray;
 use chrono::prelude::*;
+use chrono::Duration;
+use rand::prelude::SliceRandom;
+use rand::Rng;
 use rppal::gpio::{Gpio, OutputPin};
 use rppal::spi::{Bus, Mode, SlaveSelect, Spi};
 use rppal::system::DeviceInfo;
+use std::error::Error;
+use std::sync::{Arc, RwLock};
+use std::thread;
 use typenum::{U64, U96};
 
 use crate::animation_utils::*;
@@ -20,19 +21,21 @@ use crate::temperature_sensor::TemperatureSensor;
 const LE_PIN: u8 = 22;
 
 pub trait ClockDriver {
-    fn show_next_frame(&mut self, frame_interval_us: u64) -> Result<(), Box<dyn Error>>;
+    fn show_next_frame(&mut self) -> Result<(), Box<dyn Error>>;
     // fn show<M: DisplayMessage>(&mut self, dm: M) -> Result<(), Box<dyn Error>>;
     fn write_frame(
         &mut self,
         off_linger: Option<Duration>,
         on_linger: Option<Duration>,
     ) -> Result<(), Box<dyn Error>>;
+    fn setup_overlays_for_minute(&mut self) -> ();
 }
 
 #[derive(Debug)]
 pub struct NCS3148CDriver {
     le_pin: OutputPin,
     spi: Spi,
+    frame_interval_us: i64,
     raw_message: BitArray<u8, U96>,
     last_frame_time: DateTime<Local>,
     temperature_lock: Arc<RwLock<Option<f32>>>,
@@ -42,7 +45,10 @@ pub struct NCS3148CDriver {
 impl NCS3148CDriver {
     const CLOCK_TYPE: ClockType = ClockType::NCS3148C;
 
-    pub fn new(temperature_lk: Arc<RwLock<Option<f32>>>) -> Result<NCS3148CDriver, Box<dyn Error>> {
+    pub fn new(
+        temperature_lk: Arc<RwLock<Option<f32>>>,
+        frame_interval_us: i64,
+    ) -> Result<NCS3148CDriver, Box<dyn Error>> {
         println!(
             "Running a {:?} clock from a {}.",
             NCS3148CDriver::CLOCK_TYPE,
@@ -51,6 +57,7 @@ impl NCS3148CDriver {
         let mut cd = NCS3148CDriver {
             le_pin: Gpio::new()?.get(LE_PIN)?.into_output(),
             spi: Spi::new(Bus::Spi0, SlaveSelect::Ss0, 8_000_000, Mode::Mode2)?,
+            frame_interval_us: frame_interval_us,
             raw_message: BitArray::<u8, U96>::from_elem(false),
             last_frame_time: Local::now(),
             temperature_lock: temperature_lk,
@@ -67,18 +74,26 @@ impl NCS3148CDriver {
     }
 }
 impl ClockDriver for NCS3148CDriver {
-    fn show_next_frame(&mut self, frame_interval_us: u64) -> Result<(), Box<dyn Error>> {
+    fn show_next_frame(&mut self) -> Result<(), Box<dyn Error>> {
+        let seconds_pulse = PwmAnimation {
+            frame_interval_us: self.frame_interval_us,
+        };
         let local: DateTime<Local> = Local::now();
         let micros = local.timestamp_subsec_micros();
         let secs = local.second();
+        let minute = local.minute();
         let mut msg_string: String;
         let frame_lingers: LingerDurations;
+        if self.last_frame_time.minute() < minute {
+            self.setup_overlays_for_minute();
+        }
+
         //TODO: abstract this into the Overlay
         if secs >= 10 && secs < 15 && self.temperature_lock.read().unwrap().is_some() {
             let temp = self.temperature_lock.read().unwrap().unwrap();
             frame_lingers = LingerDurations {
-                off: Some(Duration::from_micros(0)),
-                on: Some(Duration::from_micros(frame_interval_us)),
+                off: Some(Duration::microseconds(0)),
+                on: Some(Duration::microseconds(self.frame_interval_us)),
             };
             msg_string = format!("{}           ", temp).to_string();
         } else {
@@ -88,16 +103,15 @@ impl ClockDriver for NCS3148CDriver {
                 msg_string = msg_string.replace(".", " ");
                 // msg_string = "            ".to_string();
             }
-            frame_lingers = PwmAnimation::pwm_seconds_animation(
-                local.timestamp_subsec_micros(),
-                frame_interval_us,
-            );
+            frame_lingers = seconds_pulse.pwm_seconds_animation(local.timestamp_subsec_micros());
+        }
+        let mut cur_message = NCS3148CMessage::from_string(msg_string, frame_lingers);
+        
+        for cur_overlay in &self.overlays {
+            
         }
 
-        let res = self.show(NCS3148CMessage::from_string(
-            msg_string,
-            frame_lingers,
-        ));
+        let res = self.show(cur_message);
 
         self.last_frame_time = local;
         res
@@ -112,10 +126,35 @@ impl ClockDriver for NCS3148CDriver {
         } else {
             self.le_pin.set_low();
             self.spi.write(&*self.raw_message.to_bytes())?;
-            off_linger.map(|off| thread::sleep(off));
+            off_linger.map(|off| thread::sleep(off.to_std().unwrap()));
             self.le_pin.set_high();
-            on_linger.map(|on| thread::sleep(on));
+            on_linger.map(|on| thread::sleep(on.to_std().unwrap()));
         }
         Ok(())
+    }
+    fn setup_overlays_for_minute(&mut self) -> () {
+        //clear out expired overlays
+        self.overlays.retain(|cur_overlay| match cur_overlay {
+            Overlay::AntiPoison(ap) => !ap.has_ended(),
+            Overlay::TempOverlay(t) => !t.has_ended(),
+        });
+
+        let mut rng = rand::thread_rng();
+        let mut numeric_tube_positions = vec![0, 1, 3, 4, 6, 7, 9, 10];
+        numeric_tube_positions.shuffle(&mut rng);
+        let num_antipoisons = rng.gen_range(0..numeric_tube_positions.len());
+        for _ in 0..num_antipoisons {
+            let cur_anti_poison = AntiPoisonAnimation {
+                tube_position: numeric_tube_positions.pop().unwrap(),
+                style: AntiPoisonAnimationStyle::Sequential,
+                start_time: Local::now().with_second(rng.gen_range(5..55)).unwrap(),
+                duration: Duration::seconds(3),
+            };
+            self.overlays.push(Overlay::AntiPoison(cur_anti_poison));
+        }
+
+        for o in &self.overlays {
+            println!("{:?}", o)
+        }
     }
 }

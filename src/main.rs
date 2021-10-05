@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_imports)]
 
-use crate::{clock_driver::*, clock_objects::ClockType};
+use crate::{clock_driver::*, clock_objects::ClockType, errors::*};
 
 mod clock_driver;
 mod clock_objects;
@@ -8,6 +8,7 @@ mod spin_delay; //will be unnecessary once new version of rppal is released
 mod temperature_sensor;
 mod tube_objects;
 mod animation_utils;
+mod errors;
 
 use crate::clock_objects::{DisplayMessage, NCS3148CMessage};
 use crate::temperature_sensor::TemperatureSensor;
@@ -57,9 +58,15 @@ fn main() -> Result<()> {
     let temperature_lk = temp_sensor.raw_degrees_c.clone();
     thread::spawn(move || temp_sensor.run_temp_sensor());
 
+    let mut frame_interval_us = (1f32 / FPS_HZ * 1000f32 * 1000f32) as i64;
+    if frame_interval_us > 100 {
+        frame_interval_us = frame_interval_us - 100;
+    }
+    println!("Clock Interval {:?}us", frame_interval_us);
+
     let clock_driver = match clock_type {
-        ClockType::NCS3148C => NCS3148CDriver::new(temperature_lk),
-        ClockType::NCS3186 => NCS3148CDriver::new(temperature_lk),
+        ClockType::NCS3148C => NCS3148CDriver::new(temperature_lk, frame_interval_us),
+        ClockType::NCS3186 => NCS3148CDriver::new(temperature_lk, frame_interval_us),
     }
     .expect("Clock Initialization Failed");
 
@@ -88,14 +95,9 @@ async fn wait_for_signal() {
 /// This has to be a pretty hot loop, looking for 200μs or higher precision for 5kHz
 /// and async isn't cutting it, with around 1ms being the min delay
 fn timeloop<T: ClockDriver>(mut clock: T) -> ! {
-    let mut frame_interval_us = (1f32 / FPS_HZ * 1000f32 * 1000f32) as u64;
-    if frame_interval_us > 100 {
-        frame_interval_us = frame_interval_us - 100;
-    }
-    println!("Clock Interval {:?}us", frame_interval_us);
     loop {
         clock
-            .show_next_frame(frame_interval_us)
+            .show_next_frame()
             .expect("Clock Display Failed");
     }
 }
