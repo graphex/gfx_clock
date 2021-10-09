@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use bit_array::BitArray;
 use chrono::prelude::*;
 use chrono::Duration;
@@ -12,6 +13,7 @@ use std::thread;
 use typenum::{U64, U96};
 
 use crate::animation_utils::*;
+use crate::animation_utils::Overlay::TempOverlay;
 use crate::clock_objects::{
     ClockType, DisplayMessage, LingerDurations, NCS3148CMessage, NCS3186Message,
 };
@@ -73,6 +75,7 @@ impl NCS3148CDriver {
         self.write_frame(dm.get_off_linger(), dm.get_on_linger())
     }
 }
+
 impl ClockDriver for NCS3148CDriver {
     fn show_next_frame(&mut self) -> Result<(), Box<dyn Error>> {
         let seconds_pulse = PwmAnimation {
@@ -80,7 +83,7 @@ impl ClockDriver for NCS3148CDriver {
         };
         let local: DateTime<Local> = Local::now();
         let micros = local.timestamp_subsec_micros();
-        let secs = local.second();
+        // let secs = local.second();
         let minute = local.minute();
         let mut msg_string: String;
         let frame_lingers: LingerDurations;
@@ -88,27 +91,20 @@ impl ClockDriver for NCS3148CDriver {
             self.setup_overlays_for_minute();
         }
 
-        //TODO: abstract this into the Overlay
-        if secs >= 10 && secs < 15 && self.temperature_lock.read().unwrap().is_some() {
-            let temp = self.temperature_lock.read().unwrap().unwrap();
-            frame_lingers = LingerDurations {
-                off: Some(Duration::microseconds(0)),
-                on: Some(Duration::microseconds(self.frame_interval_us)),
-            };
-            msg_string = format!("{}           ", temp).to_string();
-        } else {
-            msg_string = DisplayMessageStringUtils::for_local(local);
-            if !TimeSeparators::time_separators_animation(micros) {
-                msg_string = msg_string.replace(":", " ");
-                msg_string = msg_string.replace(".", " ");
-                // msg_string = "            ".to_string();
-            }
-            frame_lingers = seconds_pulse.pwm_seconds_animation(local.timestamp_subsec_micros());
+        msg_string = DisplayMessageStringUtils::for_local(local);
+        if !TimeSeparators::time_separators_animation(micros) {
+            msg_string = msg_string.replace(":", " ");
+            msg_string = msg_string.replace(".", " ");
+            // msg_string = "            ".to_string();
         }
+        frame_lingers = seconds_pulse.pwm_seconds_animation(local.timestamp_subsec_micros());
         let mut cur_message = NCS3148CMessage::from_string(msg_string, frame_lingers);
-        
-        for cur_overlay in &self.overlays {
-            
+
+        for cur_overlay in &mut self.overlays {
+            match cur_overlay {
+                Overlay::TempOverlay(t) => t.apply_to_message(local, &mut cur_message),
+                Overlay::AntiPoison(o) => o.apply_to_message(local, &mut cur_message),
+            }
         }
 
         let res = self.show(cur_message);
@@ -134,24 +130,21 @@ impl ClockDriver for NCS3148CDriver {
     }
     fn setup_overlays_for_minute(&mut self) -> () {
         //clear out expired overlays
+        let local: DateTime<Local> = Local::now();
         self.overlays.retain(|cur_overlay| match cur_overlay {
-            Overlay::AntiPoison(ap) => !ap.has_ended(),
-            Overlay::TempOverlay(t) => !t.has_ended(),
+            Overlay::AntiPoison(ap) => !ap.has_ended(local),
+            Overlay::TempOverlay(t) => !t.has_ended(local),
         });
 
-        let mut rng = rand::thread_rng();
-        let mut numeric_tube_positions = vec![0, 1, 3, 4, 6, 7, 9, 10];
-        numeric_tube_positions.shuffle(&mut rng);
-        let num_antipoisons = rng.gen_range(0..numeric_tube_positions.len());
-        for _ in 0..num_antipoisons {
-            let cur_anti_poison = AntiPoisonAnimation {
-                tube_position: numeric_tube_positions.pop().unwrap(),
-                style: AntiPoisonAnimationStyle::Sequential,
-                start_time: Local::now().with_second(rng.gen_range(5..55)).unwrap(),
-                duration: Duration::seconds(3),
-            };
-            self.overlays.push(Overlay::AntiPoison(cur_anti_poison));
-        }
+        //adds a number of random anti-poison overlays to individual numeric tubes
+        self.overlays.append(&mut AntiPoisonAnimation::matrix_style_set());
+        let temperature_overlay = TempOverlay(
+            TempOverlayAnimation::new(
+                self.temperature_lock.clone(),
+                ClockType::NCS3148C,
+            )
+        );
+        self.overlays.push(temperature_overlay);
 
         for o in &self.overlays {
             println!("{:?}", o)

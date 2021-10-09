@@ -18,7 +18,7 @@ use std::fmt::{Debug, Write};
 use std::thread::sleep;
 use std::time::Duration;
 use std::{fmt, thread};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tokio::runtime::Builder;
 use typenum::U96;
 
@@ -54,9 +54,9 @@ fn main() -> Result<()> {
         .thread_stack_size(2 * 1024 * 1024)
         .build()?;
 
-    let mut temp_sensor =  temperature_sensor::TemperatureSensor::new();
-    let temperature_lk = temp_sensor.raw_degrees_c.clone();
-    thread::spawn(move || temp_sensor.run_temp_sensor());
+    let temperature_lock = Arc::new(RwLock::new(None));
+    let sensor_lock = temperature_lock.clone();
+    thread::spawn(move || temperature_sensor::TemperatureSensor::run(sensor_lock));
 
     let mut frame_interval_us = (1f32 / FPS_HZ * 1000f32 * 1000f32) as i64;
     if frame_interval_us > 100 {
@@ -65,8 +65,8 @@ fn main() -> Result<()> {
     println!("Clock Interval {:?}us", frame_interval_us);
 
     let clock_driver = match clock_type {
-        ClockType::NCS3148C => NCS3148CDriver::new(temperature_lk, frame_interval_us),
-        ClockType::NCS3186 => NCS3148CDriver::new(temperature_lk, frame_interval_us),
+        ClockType::NCS3148C => NCS3148CDriver::new(temperature_lock, frame_interval_us),
+        ClockType::NCS3186 => NCS3148CDriver::new(temperature_lock, frame_interval_us),
     }
     .expect("Clock Initialization Failed");
 

@@ -29,17 +29,20 @@ pub trait DisplayMessage {
     type L;
     fn to_raw(&self) -> BitArray<u8, U96>;
     fn from_string(time_string: String, frame_lingers: LingerDurations) -> Self
-    where
-        Self: Sized;
+        where
+            Self: Sized;
     fn set_tube(&mut self, tube_idx: usize, disp: char) -> DisplayMessageResult<()>;
     fn get_off_linger(&self) -> Option<Duration>;
     fn get_on_linger(&self) -> Option<Duration>;
+    fn set_lingers(&mut self, lingers:LingerDurations) -> DisplayMessageResult<()>;
+    fn set_from_string(&mut self, time_string: String) -> DisplayMessageResult<()>;
 }
 
 pub struct LingerDurations {
     pub off: Option<Duration>,
     pub on: Option<Duration>,
 }
+
 pub struct NCS3186Message {
     pub t0: Option<NumericTube>,
     pub t1: Option<NumericTube>,
@@ -154,9 +157,9 @@ impl DisplayMessage for NCS3148CMessage {
                 .unwrap_or(tube_default.clone())
                 .iter(),
         ]
-        .into_iter()
-        .flatten()
-        .collect()
+            .into_iter()
+            .flatten()
+            .collect()
     }
 
     // HH:MM:SS.ccS
@@ -180,6 +183,17 @@ impl DisplayMessage for NCS3148CMessage {
             lingers: lingers,
         }
     }
+    fn set_from_string(&mut self, time_string: String) -> DisplayMessageResult<()> {
+        let cs: Vec<char> = time_string.chars().collect::<Vec<_>>();
+        let results = (0..cs.len()).map(|i| {
+            match cs[i] {
+                '*' => Ok(()),
+                _ => self.set_tube(i, cs[i])
+            }
+        });
+        for r in results { r? }
+        Ok(())
+    }
     fn set_tube(&mut self, tube_idx: usize, disp: char) -> DisplayMessageResult<()> {
         match tube_idx {
             0 => self.t0 = NumericTube::from_char(disp)?,
@@ -196,6 +210,15 @@ impl DisplayMessage for NCS3148CMessage {
             11 => self.t8 = IN19ATube::from_char(disp)?,
             _ => return Err(DisplayMessageError::TubeIndexOutOfRange),
         };
+        Ok(())
+    }
+    fn set_lingers(&mut self, lingers:LingerDurations) -> DisplayMessageResult<()> {
+        if lingers.off.is_some() {
+            self.lingers.off = lingers.off;
+        }
+        if lingers.on.is_some() {
+            self.lingers.on = lingers.on;
+        }
         Ok(())
     }
     fn get_off_linger(&self) -> Option<Duration> {
