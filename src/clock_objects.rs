@@ -183,17 +183,6 @@ impl DisplayMessage for NCS3148CMessage {
             lingers: lingers,
         }
     }
-    fn set_from_string(&mut self, time_string: String) -> DisplayMessageResult<()> {
-        let cs: Vec<char> = time_string.chars().collect::<Vec<_>>();
-        let results = (0..cs.len()).map(|i| {
-            match cs[i] {
-                '*' => Ok(()),
-                _ => self.set_tube(i, cs[i])
-            }
-        });
-        for r in results { r? }
-        Ok(())
-    }
     fn set_tube(&mut self, tube_idx: usize, disp: char) -> DisplayMessageResult<()> {
         match tube_idx {
             0 => self.t0 = NumericTube::from_char(disp)?,
@@ -212,6 +201,12 @@ impl DisplayMessage for NCS3148CMessage {
         };
         Ok(())
     }
+    fn get_off_linger(&self) -> Option<Duration> {
+        self.lingers.off
+    }
+    fn get_on_linger(&self) -> Option<Duration> {
+        self.lingers.on
+    }
     fn set_lingers(&mut self, lingers:LingerDurations) -> DisplayMessageResult<()> {
         if lingers.off.is_some() {
             self.lingers.off = lingers.off;
@@ -221,10 +216,134 @@ impl DisplayMessage for NCS3148CMessage {
         }
         Ok(())
     }
+    fn set_from_string(&mut self, time_string: String) -> DisplayMessageResult<()> {
+        let cs: Vec<char> = time_string.chars().collect::<Vec<_>>();
+        let results = (0..cs.len()).map(|i| {
+            match cs[i] {
+                '*' => Ok(()),
+                _ => self.set_tube(i, cs[i])
+            }
+        });
+        for r in results { r? }
+        Ok(())
+    }
+}
+
+impl DisplayMessage for NCS3186Message {
+    type L = U96;
+
+    fn to_raw(&self) -> BitArray<u8, U96> {
+        // let mut combined_vec:BitVec<u8> = BitVec::<u8>::new();
+        // combined_vec.reserve(96);
+        // combined_vec.append(&mut self.s2.get_bits().iter().copied().collect());
+        let sep_default = BitVec::<u8>::from_iter(BitArray::<u8, U2>::from_elem(false).iter());
+        let tube_default = BitVec::<u8>::from_iter(BitArray::<u8, U10>::from_elem(false).iter());
+        vec![
+            sep_default.clone().iter(),
+            tube_default.clone().iter(),
+            tube_default.clone().iter(),
+            tube_default.clone().iter(),
+            self.s1
+                .as_ref()
+                .map(|v| v.get_bits())
+                .unwrap_or(sep_default.clone())
+                .iter(),
+            self.t5
+                .as_ref()
+                .map(|v| v.get_bits())
+                .unwrap_or(tube_default.clone())
+                .iter(),
+            self.t4
+                .as_ref()
+                .map(|v| v.get_bits())
+                .unwrap_or(tube_default.clone())
+                .iter(),
+            self.t3
+                .as_ref()
+                .map(|v| v.get_bits())
+                .unwrap_or(tube_default.clone())
+                .iter(),
+            self.s0
+                .as_ref()
+                .map(|v| v.get_bits())
+                .unwrap_or(sep_default.clone())
+                .iter(),
+            self.t2
+                .as_ref()
+                .map(|v| v.get_bits())
+                .unwrap_or(tube_default.clone())
+                .iter(),
+            self.t1
+                .as_ref()
+                .map(|v| v.get_bits())
+                .unwrap_or(tube_default.clone())
+                .iter(),
+            self.t0
+                .as_ref()
+                .map(|v| v.get_bits())
+                .unwrap_or(tube_default.clone())
+                .iter(),
+        ]
+            .into_iter()
+            .flatten()
+            .collect()
+    }
+
+    // HH:MM:SS.ccS
+    // Note: this silently ignores bad characters
+    // ToDo: return a result and handle wrong length strings better
+    fn from_string(time_string: String, lingers: LingerDurations) -> NCS3186Message {
+        let cs: Vec<char> = time_string.chars().collect::<Vec<_>>();
+        NCS3186Message {
+            t0: NumericTube::from_char(cs[0]).unwrap_or(None),
+            t1: NumericTube::from_char(cs[1]).unwrap_or(None),
+            s0: Separator::from_char(cs[2]).unwrap_or(None),
+            t2: NumericTube::from_char(cs[3]).unwrap_or(None),
+            t3: NumericTube::from_char(cs[4]).unwrap_or(None),
+            s1: Separator::from_char(cs[5]).unwrap_or(None),
+            t4: NumericTube::from_char(cs[6]).unwrap_or(None),
+            t5: NumericTube::from_char(cs[7]).unwrap_or(None),
+            lingers,
+        }
+    }
+    fn set_tube(&mut self, tube_idx: usize, disp: char) -> DisplayMessageResult<()> {
+        match tube_idx {
+            0 => self.t0 = NumericTube::from_char(disp)?,
+            1 => self.t1 = NumericTube::from_char(disp)?,
+            2 => self.s0 = Separator::from_char(disp)?,
+            3 => self.t2 = NumericTube::from_char(disp)?,
+            4 => self.t3 = NumericTube::from_char(disp)?,
+            5 => self.s1 = Separator::from_char(disp)?,
+            6 => self.t4 = NumericTube::from_char(disp)?,
+            7 => self.t5 = NumericTube::from_char(disp)?,
+            _ => return Err(DisplayMessageError::TubeIndexOutOfRange),
+        };
+        Ok(())
+    }
     fn get_off_linger(&self) -> Option<Duration> {
         self.lingers.off
     }
     fn get_on_linger(&self) -> Option<Duration> {
         self.lingers.on
+    }
+    fn set_lingers(&mut self, lingers:LingerDurations) -> DisplayMessageResult<()> {
+        if lingers.off.is_some() {
+            self.lingers.off = lingers.off;
+        }
+        if lingers.on.is_some() {
+            self.lingers.on = lingers.on;
+        }
+        Ok(())
+    }
+    fn set_from_string(&mut self, time_string: String) -> DisplayMessageResult<()> {
+        let cs: Vec<char> = time_string.chars().collect::<Vec<_>>();
+        let results = (0..cs.len()).map(|i| {
+            match cs[i] {
+                '*' => Ok(()),
+                _ => self.set_tube(i, cs[i])
+            }
+        });
+        for r in results { r? }
+        Ok(())
     }
 }

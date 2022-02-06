@@ -58,24 +58,33 @@ fn main() -> Result<()> {
     let sensor_lock = temperature_lock.clone();
     thread::spawn(move || temperature_sensor::TemperatureSensor::run(sensor_lock));
 
-    let mut frame_interval_us = (1f32 / FPS_HZ * 1000f32 * 1000f32) as i64;
-    if frame_interval_us > 100 {
-        frame_interval_us = frame_interval_us - 100;
-    }
-    println!("Clock Interval {:?}us", frame_interval_us);
+    const FRAME_INTERVAL_US:i64 = 100;
+    // const FRAME_INTERVAL_US:i64 = (1f32 / FPS_HZ * 1000f32 * 1000f32) as i64;
+    // if FRAME_INTERVAL_US > 100 {
+    //     FRAME_INTERVAL_US = FRAME_INTERVAL_US - 100;
+    // }
+    println!("Clock Interval {:?}us", FRAME_INTERVAL_US);
 
-    let clock_driver = match clock_type {
-        ClockType::NCS3148C => NCS3148CDriver::new(temperature_lock, frame_interval_us),
-        ClockType::NCS3186 => NCS3148CDriver::new(temperature_lock, frame_interval_us),
-    }
-    .expect("Clock Initialization Failed");
+    // let clock_driver:ClockDriver = match clock_type {
+    //     ClockType::NCS3148C => NCS3148CDriver::new(temperature_lock, FRAME_INTERVAL_US),
+    //     ClockType::NCS3186 => NCS3186Driver::new(temperature_lock, FRAME_INTERVAL_US),
+    // }
+    // .expect("Clock Initialization Failed");
 
-    runtime.block_on(async {
-        // runtime.spawn_blocking(|| temp_sensor());
-        runtime.spawn_blocking(|| timeloop(clock_driver));
-        wait_for_signal().await;
-        println!("Exiting clock");
-    });
+    match clock_type {
+        ClockType::NCS3148C =>  runtime.block_on(async {
+                             // runtime.spawn_blocking(|| timeloop(clock_driver));
+                             runtime.spawn_blocking( | | timeloop(NCS3148CDriver::new(temperature_lock, FRAME_INTERVAL_US).expect("Clock Init Failed")));
+                             wait_for_signal().await;
+                             println!("Exiting clock");
+                         }),
+        ClockType::NCS3186 =>  runtime.block_on(async {
+                             // runtime.spawn_blocking(|| timeloop(clock_driver));
+                             runtime.spawn_blocking( | | timeloop(NCS3186Driver::new(temperature_lock, FRAME_INTERVAL_US).expect("Clock Init Failed")));
+                             wait_for_signal().await;
+                             println!("Exiting clock");
+                         }),
+    };
     println!("Shutting down clock");
     runtime.shutdown_background();
     Ok(())
@@ -94,7 +103,7 @@ async fn wait_for_signal() {
 
 /// This has to be a pretty hot loop, looking for 200μs or higher precision for 5kHz
 /// and async isn't cutting it, with around 1ms being the min delay
-fn timeloop<T: ClockDriver>(mut clock: T) -> ! {
+fn timeloop(mut clock: impl ClockDriver) -> ! {
     loop {
         clock
             .show_next_frame()
