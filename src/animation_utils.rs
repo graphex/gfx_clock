@@ -20,12 +20,11 @@ impl DisplayMessageStringUtils {
                 let mut s = local.format("%I:%M:%S%.3f").to_string();
                 s.push_str(" ");
                 s
-            },
+            }
             ClockType::NCS3186 => {
                 local.format("%I:%M:%S").to_string()
             }
         }
-
     }
 }
 
@@ -208,8 +207,8 @@ impl TempOverlayAnimation {
         if let Some(cur_temp) = self.temperature_celsius.flatten() {
             // Some("12.34'56.78℃".to_string())
             match self.clock_type {
-                ClockType::NCS3148C => Some(format!("{:2.2}'{:2.2}℃", ((cur_temp*(9f32/5f32))+32f32)%100f32, cur_temp%100f32)),
-                ClockType::NCS3186 => Some(format!("{:2.2}'  ", ((cur_temp*(9f32/5f32))+32f32)%100f32)),
+                ClockType::NCS3148C => Some(format!("{:2.2}'{:2.2}℃", ((cur_temp * (9f32 / 5f32)) + 32f32) % 100f32, cur_temp % 100f32)),
+                ClockType::NCS3186 => Some(format!("{:2.2}'  ", ((cur_temp * (9f32 / 5f32)) + 32f32) % 100f32)),
             }
         } else {
             None
@@ -277,37 +276,32 @@ pub struct PwmAnimation {
 
 impl PwmAnimation {
     pub fn pwm_seconds_animation(&self, micros: u32) -> LingerDurations {
-        // if micros < 750_000 {
-        //     let p: f32;
-        //     p = Sine::ease_in(micros as f32, 1f32, -1f32, 750_000f32);
-        //     LingerDurations {
-        //         off: Some(Duration::microseconds(
-        //             ((1f32 - p) * self.frame_interval_us as f32) as i64,
-        //         )),
-        //         on: Some(Duration::microseconds(
-        //             (p * self.frame_interval_us as f32) as i64,
-        //         )),
-        //     }
-        // } else if micros < 900_000 {
-        //     LingerDurations {
-        //         off: Some(Duration::microseconds(self.frame_interval_us as i64)),
-        //         on: Some(Duration::microseconds(0)),
-        //     }
-        // } else {
-        //     let p: f32;
-        //     p = Quint::ease_in((micros - 900_000u32) as f32, 0f32, 1f32, 100_000f32);
-        //     LingerDurations {
-        //         off: Some(Duration::microseconds(
-        //             ((1f32 - p) * self.frame_interval_us as f32) as i64,
-        //         )),
-        //         on: Some(Duration::microseconds(
-        //             (p * self.frame_interval_us as f32) as i64,
-        //         )),
-        //     }
-        // }
-        LingerDurations {
-            off: Some(Duration::microseconds(0)),
-            on: Some(Duration::microseconds(99)),
+        let fd = self.frame_interval_us as f32;
+        const DELTA:f32 = 30f32;
+        if micros < 750_000 {
+            let p: f32;
+            p = Sine::ease_in(micros as f32, fd, -DELTA, 750_000f32);
+            LingerDurations {
+                off: Some(Duration::microseconds((fd - p) as i64)),
+                on: Some(Duration::microseconds(p as i64)),
+            }
+        } else if micros < 900_000 {
+            let p = DELTA;
+            LingerDurations {
+                off: Some(Duration::microseconds((fd - p) as i64)),
+                on: Some(Duration::microseconds(fd as i64)),
+            }
+        } else {
+            let p: f32;
+            p = Quint::ease_in((micros - 900_000u32) as f32, fd - DELTA, DELTA, 100_000f32);
+            LingerDurations {
+                off: Some(Duration::microseconds((fd - p) as i64)),
+                on: Some(Duration::microseconds(p as i64)),
+            }
         }
+        // LingerDurations {
+        //     off: Some(Duration::microseconds(0)),
+        //     on: Some(Duration::microseconds(99)),
+        // }
     }
 }
