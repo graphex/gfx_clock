@@ -3,7 +3,7 @@ FROM ubuntu
 
 # install target toolchain
 RUN apt-get update --fix-missing
-RUN apt-get install -y build-essential gcc-arm-linux-gnueabihf
+RUN apt-get install -y build.sh-essential gcc-arm-linux-gnueabihf
 
 # general dependencies
 RUN apt-get install -y curl

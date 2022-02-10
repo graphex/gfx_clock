@@ -1,0 +1,10 @@
+[Unit]
+Description=GFX Clock
+After=multi-user.target
+
+[Service]
+Type=idle
+ExecStart=/home/pi/gfx_clock NCS3148C
+
+[Install]
+WantedBy=multi-user.target
