@@ -276,24 +276,24 @@ pub struct PwmAnimation {
 
 impl PwmAnimation {
     pub fn pwm_seconds_animation(&self, micros: u32) -> LingerDurations {
-        let fd = self.frame_interval_us as f32;
-        const DELTA:f32 = 30f32;
+        let fd = self.frame_interval_us as f32 + rand::thread_rng().gen_range(0..90) as f32;
+        let delta:f32 = rand::thread_rng().gen_range(0..90) as f32;
         if micros < 750_000 {
             let p: f32;
-            p = Sine::ease_in(micros as f32, fd, -DELTA, 750_000f32);
+            p = Sine::ease_in(micros as f32, fd, -delta, 750_000f32);
             LingerDurations {
                 off: Some(Duration::microseconds((fd - p) as i64)),
                 on: Some(Duration::microseconds(p as i64)),
             }
         } else if micros < 900_000 {
-            let p = DELTA;
+            let p = delta;
             LingerDurations {
                 off: Some(Duration::microseconds((fd - p) as i64)),
                 on: Some(Duration::microseconds(fd as i64)),
             }
         } else {
             let p: f32;
-            p = Quint::ease_in((micros - 900_000u32) as f32, fd - DELTA, DELTA, 100_000f32);
+            p = Quint::ease_in((micros - 900_000u32) as f32, fd - delta, delta, 100_000f32);
             LingerDurations {
                 off: Some(Duration::microseconds((fd - p) as i64)),
                 on: Some(Duration::microseconds(p as i64)),

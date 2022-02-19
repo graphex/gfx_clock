@@ -58,7 +58,7 @@ fn main() -> Result<()> {
     let sensor_lock = temperature_lock.clone();
     thread::spawn(move || temperature_sensor::TemperatureSensor::run(sensor_lock));
 
-    const FRAME_INTERVAL_US:i64 = 100;
+    const FRAME_INTERVAL_US:i64 = 200;
     // const FRAME_INTERVAL_US:i64 = (1f32 / FPS_HZ * 1000f32 * 1000f32) as i64;
     // if FRAME_INTERVAL_US > 100 {
     //     FRAME_INTERVAL_US = FRAME_INTERVAL_US - 100;
